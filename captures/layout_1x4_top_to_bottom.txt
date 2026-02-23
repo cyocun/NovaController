@@ -1,0 +1,5 @@
+# Layout Preset: 1列×4行 上→下 (Top to Bottom)
+# Source: 未キャプチャ
+# Configuration: 1 column, 4 rows, top-to-bottom scan direction
+#
+# TODO: NovaLCTで1列×4行の上→下レイアウトをキャプチャして追加
