@@ -11,11 +11,12 @@ struct CabinetPosition: Hashable {
 
 struct LayoutView: View {
     @State private var columns: Int = 4
-    @State private var rows: Int = 3
+    @State private var rows: Int = 1
     @State private var cabinetWidth: Int = 128
     @State private var cabinetHeight: Int = 128
     @State private var selectedCabinet: CabinetPosition? = nil
     @State private var enabledCabinets: Set<CabinetPosition> = []
+    @State private var scanDirection: USBManager.ScanDirection = .leftToRight
 
     var totalResolution: (width: Int, height: Int) {
         guard enabledCabinets.count > 0 else { return (0, 0) }
@@ -41,19 +42,31 @@ struct LayoutView: View {
                 GridEditorView(
                     columns: columns,
                     rows: rows,
+                    scanDirection: scanDirection,
                     selectedCabinet: $selectedCabinet,
                     enabledCabinets: $enabledCabinets
                 )
                 .frame(height: 280)
 
-                // フッター - 出力解像度
-                HStack(spacing: 6) {
-                    Image(systemName: "aspectratio")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                    Text("出力解像度: \(totalResolution.width) × \(totalResolution.height) px")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                // フッター - 出力解像度 + スキャン方向表示
+                HStack(spacing: 12) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "aspectratio")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Text("出力解像度: \(totalResolution.width) x \(totalResolution.height) px")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    HStack(spacing: 6) {
+                        Image(systemName: scanDirectionIcon)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Text("方向: \(scanDirection.rawValue)")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
 
                 // 適用ボタン
@@ -87,6 +100,35 @@ struct LayoutView: View {
                     SettingsSection(title: "キャビネットサイズ (px)") {
                         StepperField(label: "幅", value: $cabinetWidth, range: 32...512, step: 8)
                         StepperField(label: "高さ", value: $cabinetHeight, range: 32...512, step: 8)
+                    }
+
+                    SettingsSection(title: "スキャン方向") {
+                        ForEach(USBManager.ScanDirection.allCases) { direction in
+                            Button(action: { scanDirection = direction }) {
+                                HStack {
+                                    Image(systemName: iconForDirection(direction))
+                                        .font(.system(size: 11))
+                                        .frame(width: 16)
+                                    Text(direction.rawValue)
+                                        .font(.system(size: 12, weight: .medium))
+                                    Spacer()
+                                    if scanDirection == direction {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundColor(Color(hex: "#0f3460"))
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                                .padding(.horizontal, 8)
+                                .background(
+                                    scanDirection == direction
+                                        ? Color(hex: "#d6eaf8")
+                                        : Color.clear
+                                )
+                                .cornerRadius(4)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
 
                     if let selected = selectedCabinet {
@@ -132,6 +174,18 @@ struct LayoutView: View {
         }
     }
 
+    private var scanDirectionIcon: String {
+        iconForDirection(scanDirection)
+    }
+
+    private func iconForDirection(_ direction: USBManager.ScanDirection) -> String {
+        switch direction {
+        case .leftToRight: return "arrow.right"
+        case .rightToLeft: return "arrow.left"
+        case .topToBottom: return "arrow.down"
+        }
+    }
+
     private func applyLayout() {
         USBManager.shared.setLayout(
             columns: columns,
@@ -160,6 +214,7 @@ struct LayoutView: View {
 struct GridEditorView: View {
     let columns: Int
     let rows: Int
+    let scanDirection: USBManager.ScanDirection
     @Binding var selectedCabinet: CabinetPosition?
     @Binding var enabledCabinets: Set<CabinetPosition>
 
@@ -180,8 +235,10 @@ struct GridEditorView: View {
                     HStack(spacing: spacing) {
                         ForEach(0..<columns, id: \.self) { col in
                             let pos = CabinetPosition(row: row, col: col)
+                            let index = cabinetIndex(row: row, col: col)
                             CabinetCell(
                                 position: pos,
+                                index: index,
                                 isSelected: selectedCabinet == pos,
                                 isEnabled: enabledCabinets.contains(pos),
                                 cellSize: cellSize
@@ -206,12 +263,25 @@ struct GridEditorView: View {
         .background(Color(hex: "#e8ecf0"))
         .cornerRadius(12)
     }
+
+    /// スキャン方向に基づくキャビネットの番号を計算
+    private func cabinetIndex(row: Int, col: Int) -> Int {
+        switch scanDirection {
+        case .leftToRight:
+            return row * columns + col
+        case .rightToLeft:
+            return row * columns + (columns - 1 - col)
+        case .topToBottom:
+            return col * rows + row
+        }
+    }
 }
 
 // MARK: - CabinetCell
 
 struct CabinetCell: View {
     let position: CabinetPosition
+    let index: Int
     let isSelected: Bool
     let isEnabled: Bool
     let cellSize: CGFloat
@@ -224,8 +294,8 @@ struct CabinetCell: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color(hex: "#0f3460"))
                     VStack(spacing: 2) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .bold))
+                        Text("#\(index)")
+                            .font(.system(size: 10, weight: .bold, design: .monospaced))
                             .foregroundColor(.white)
                         if cellSize > 50 {
                             Text("\(position.col + 1),\(position.row + 1)")
@@ -242,8 +312,8 @@ struct CabinetCell: View {
                     RoundedRectangle(cornerRadius: 6)
                         .fill(Color(hex: "#d6eaf8"))
                     VStack(spacing: 2) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .medium))
+                        Text("#\(index)")
+                            .font(.system(size: 10, weight: .medium, design: .monospaced))
                             .foregroundColor(Color(hex: "#0f3460"))
                         if cellSize > 50 {
                             Text("\(position.col + 1),\(position.row + 1)")
@@ -306,7 +376,7 @@ struct StepperField: View {
 
             HStack(spacing: 0) {
                 Button(action: { if value - step >= range.lowerBound { value -= step } }) {
-                    Text("−")
+                    Text("\u{2212}")
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 24, height: 24)
                         .background(Color(hex: "#dfe6e9"))
@@ -319,7 +389,7 @@ struct StepperField: View {
                     .multilineTextAlignment(.center)
 
                 Button(action: { if value + step <= range.upperBound { value += step } }) {
-                    Text("＋")
+                    Text("\u{FF0B}")
                         .font(.system(size: 13, weight: .medium))
                         .frame(width: 24, height: 24)
                         .background(Color(hex: "#dfe6e9"))
