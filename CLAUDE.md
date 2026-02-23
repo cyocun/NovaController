@@ -48,15 +48,16 @@ xcodebuild -project NovaController/NovaController.xcodeproj -scheme NovaControll
 ## 実装状況
 - [x] UIレイアウト（サイドバー+コンテンツ）
 - [x] キャビネット配置グリッドエディター
-- [x] スキャン方向選択UI（左→右/右→左/上→下）
+- [x] スキャン方向選択UI（左→右/右→左/上→下/S字）
 - [x] 輝度調整メーター+スライダー
 - [x] USBManager シリアル通信（IOKit, CP210x自動検出）
 - [x] USBManager のView統合（ConnectionStatusView/LayoutView/BrightnessView接続済み）
 - [x] 実機でのVendor/Product ID確認 (VID:0x10C4, PID:0xEA60)
 - [x] MSD300プロトコル実装 — 輝度コマンド (キャプチャ検証済み)
 - [x] MSD300プロトコル実装 — チェックサムアルゴリズム (5パケット検証済み)
-- [x] レイアウトプリセット送信機能 (sendLayoutPreset)
+- [x] レイアウトコマンド動的生成 (setLayout) — 任意のcols/rows/方向に対応
 - [x] レイアウトキャプチャ — 4×1 左→右 / 4×1 右→左 / 2×4 S字パターン
-- [ ] レイアウトプリセットデータの追加 (キャプチャデータから抽出・コード組み込み)
+- [x] マッピングテーブル解析 — 4B/エントリ形式、座標パターン確認済み
+- [x] スキャン方向対応 — L→R / R→L / 上→下 / S字 (キャプチャ検証済み)
 - [ ] エラーハンドリング（接続断時のUI表示）
 - [ ] 実機テスト（macOS + MSD300接続）

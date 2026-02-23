@@ -183,6 +183,7 @@ struct LayoutView: View {
         case .leftToRight: return "arrow.right"
         case .rightToLeft: return "arrow.left"
         case .topToBottom: return "arrow.down"
+        case .serpentine: return "arrow.triangle.swap"
         }
     }
 
@@ -192,6 +193,7 @@ struct LayoutView: View {
             rows: rows,
             cabinetWidth: cabinetWidth,
             cabinetHeight: cabinetHeight,
+            scanDirection: scanDirection,
             enabled: enabledCabinets
         )
     }
@@ -230,32 +232,44 @@ struct GridEditorView: View {
             let totalWidth = cellSize * CGFloat(columns) + spacing * CGFloat(columns - 1)
             let totalHeight = cellSize * CGFloat(rows) + spacing * CGFloat(rows - 1)
 
-            VStack(spacing: spacing) {
-                ForEach(0..<rows, id: \.self) { row in
-                    HStack(spacing: spacing) {
-                        ForEach(0..<columns, id: \.self) { col in
-                            let pos = CabinetPosition(row: row, col: col)
-                            let index = cabinetIndex(row: row, col: col)
-                            CabinetCell(
-                                position: pos,
-                                index: index,
-                                isSelected: selectedCabinet == pos,
-                                isEnabled: enabledCabinets.contains(pos),
-                                cellSize: cellSize
-                            ) {
-                                if selectedCabinet == pos {
-                                    if enabledCabinets.contains(pos) {
-                                        enabledCabinets.remove(pos)
+            ZStack {
+                // 接続矢印ライン
+                ConnectionArrowsView(
+                    columns: columns, rows: rows,
+                    scanDirection: scanDirection,
+                    cellSize: cellSize, spacing: spacing,
+                    totalWidth: totalWidth, totalHeight: totalHeight
+                )
+
+                // キャビネットグリッド
+                VStack(spacing: spacing) {
+                    ForEach(0..<rows, id: \.self) { row in
+                        HStack(spacing: spacing) {
+                            ForEach(0..<columns, id: \.self) { col in
+                                let pos = CabinetPosition(row: row, col: col)
+                                let index = cabinetIndex(row: row, col: col)
+                                CabinetCell(
+                                    position: pos,
+                                    index: index,
+                                    isSelected: selectedCabinet == pos,
+                                    isEnabled: enabledCabinets.contains(pos),
+                                    cellSize: cellSize
+                                ) {
+                                    if selectedCabinet == pos {
+                                        if enabledCabinets.contains(pos) {
+                                            enabledCabinets.remove(pos)
+                                        } else {
+                                            enabledCabinets.insert(pos)
+                                        }
                                     } else {
-                                        enabledCabinets.insert(pos)
+                                        selectedCabinet = pos
                                     }
-                                } else {
-                                    selectedCabinet = pos
                                 }
                             }
                         }
                     }
                 }
+                .frame(width: totalWidth, height: totalHeight)
             }
             .frame(width: totalWidth, height: totalHeight)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -264,16 +278,134 @@ struct GridEditorView: View {
         .cornerRadius(12)
     }
 
-    /// スキャン方向に基づくキャビネットの番号を計算
+    /// スキャン方向に基づくキャビネットの番号を計算 (1始まり)
     private func cabinetIndex(row: Int, col: Int) -> Int {
+        let zeroBase: Int
         switch scanDirection {
         case .leftToRight:
-            return row * columns + col
+            zeroBase = row * columns + col
         case .rightToLeft:
-            return row * columns + (columns - 1 - col)
+            zeroBase = row * columns + (columns - 1 - col)
         case .topToBottom:
-            return col * rows + row
+            zeroBase = col * rows + row
+        case .serpentine:
+            let base = col * rows
+            if col % 2 == 0 {
+                zeroBase = base + (rows - 1 - row)
+            } else {
+                zeroBase = base + row
+            }
         }
+        return zeroBase + 1
+    }
+}
+
+// MARK: - ConnectionArrowsView
+
+struct ConnectionArrowsView: View {
+    let columns: Int
+    let rows: Int
+    let scanDirection: USBManager.ScanDirection
+    let cellSize: CGFloat
+    let spacing: CGFloat
+    let totalWidth: CGFloat
+    let totalHeight: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            let order = scanOrder()
+            guard order.count >= 2 else { return }
+
+            for i in 0..<(order.count - 1) {
+                let from = cellCenter(row: order[i].row, col: order[i].col)
+                let to = cellCenter(row: order[i + 1].row, col: order[i + 1].col)
+                drawArrow(context: context, from: from, to: to)
+            }
+        }
+        .allowsHitTesting(false)
+        .frame(width: totalWidth, height: totalHeight)
+    }
+
+    private func cellCenter(row: Int, col: Int) -> CGPoint {
+        let x = CGFloat(col) * (cellSize + spacing) + cellSize / 2
+        let y = CGFloat(row) * (cellSize + spacing) + cellSize / 2
+        return CGPoint(x: x, y: y)
+    }
+
+    private func drawArrow(context: GraphicsContext, from: CGPoint, to: CGPoint) {
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 0 else { return }
+
+        // セル端から少しマージンを取る
+        let margin: CGFloat = cellSize * 0.35
+        let ratio = margin / length
+        let start = CGPoint(x: from.x + dx * ratio, y: from.y + dy * ratio)
+        let end = CGPoint(x: to.x - dx * ratio, y: to.y - dy * ratio)
+
+        // ライン
+        var linePath = Path()
+        linePath.move(to: start)
+        linePath.addLine(to: end)
+        context.stroke(linePath, with: .color(Color(hex: "#e94560").opacity(0.5)), lineWidth: 2)
+
+        // 矢印ヘッド
+        let arrowLen: CGFloat = 7
+        let arrowAngle: CGFloat = .pi / 6
+        let angle = atan2(dy, dx)
+        let p1 = CGPoint(
+            x: end.x - arrowLen * cos(angle - arrowAngle),
+            y: end.y - arrowLen * sin(angle - arrowAngle)
+        )
+        let p2 = CGPoint(
+            x: end.x - arrowLen * cos(angle + arrowAngle),
+            y: end.y - arrowLen * sin(angle + arrowAngle)
+        )
+        var arrowPath = Path()
+        arrowPath.move(to: end)
+        arrowPath.addLine(to: p1)
+        arrowPath.addLine(to: p2)
+        arrowPath.closeSubpath()
+        context.fill(arrowPath, with: .color(Color(hex: "#e94560").opacity(0.6)))
+    }
+
+    /// スキャン方向に基づく接続順序 (row, col) のリストを返す
+    private func scanOrder() -> [CabinetPosition] {
+        var order = [CabinetPosition]()
+        switch scanDirection {
+        case .leftToRight:
+            for row in 0..<rows {
+                for col in 0..<columns {
+                    order.append(CabinetPosition(row: row, col: col))
+                }
+            }
+        case .rightToLeft:
+            for row in 0..<rows {
+                for col in stride(from: columns - 1, through: 0, by: -1) {
+                    order.append(CabinetPosition(row: row, col: col))
+                }
+            }
+        case .topToBottom:
+            for col in 0..<columns {
+                for row in 0..<rows {
+                    order.append(CabinetPosition(row: row, col: col))
+                }
+            }
+        case .serpentine:
+            for col in 0..<columns {
+                if col % 2 == 0 {
+                    for row in stride(from: rows - 1, through: 0, by: -1) {
+                        order.append(CabinetPosition(row: row, col: col))
+                    }
+                } else {
+                    for row in 0..<rows {
+                        order.append(CabinetPosition(row: row, col: col))
+                    }
+                }
+            }
+        }
+        return order
     }
 }
 

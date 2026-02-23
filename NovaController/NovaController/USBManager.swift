@@ -80,6 +80,7 @@ class USBManager: ObservableObject {
         case leftToRight = "左→右"
         case rightToLeft = "右→左"
         case topToBottom = "上→下"
+        case serpentine = "S字"
 
         var id: String { rawValue }
     }
@@ -410,13 +411,14 @@ class USBManager: ObservableObject {
 
     /// レイアウト設定のフルシーケンスを動的に生成して送信する
     ///
-    /// キャプチャ解析により判明したコマンドシーケンス (42コマンド):
-    /// 1. 初期化 (cmd 0-1): 受信カード初期化
-    /// 2. グローバル設定 (cmd 2-13): 画面サイズ、列数等
-    /// 3. マッピングテーブル (cmd 14-29): 16ブロック×256バイト、カード→ピクセル座標マッピング
-    /// 4. パーカード設定 (cmd 30-38): 各受信カードのサイズ設定
-    /// 5. コミット (cmd 39-41): 設定適用
-    func setLayout(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int, enabled: Set<CabinetPosition>) {
+    /// キャプチャ解析により判明したコマンドシーケンス:
+    /// 1. 初期化 (2 cmd): 受信カード初期化
+    /// 2. グローバル設定 (12 cmd): 画面サイズ、カード数等
+    /// 3. マッピングテーブル (16 cmd): 16ブロック×256バイト、カード→ピクセル座標マッピング
+    /// 4. パーカード設定 (1 + cards×2 cmd): 各受信カードのサイズ設定
+    /// 5. コミット (3 cmd): 設定適用
+    func setLayout(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int,
+                   scanDirection: ScanDirection, enabled: Set<CabinetPosition>) {
         let totalWidth = columns * cabinetWidth
         let totalHeight = rows * cabinetHeight
         let totalCards = columns * rows
@@ -427,7 +429,7 @@ class USBManager: ObservableObject {
                 return
             }
 
-            print("[USBManager] setLayout: \(columns)x\(rows) = \(totalWidth)x\(totalHeight)px, \(enabled.count)/\(totalCards) enabled")
+            print("[USBManager] setLayout: \(columns)x\(rows) = \(totalWidth)x\(totalHeight)px, dir=\(scanDirection.rawValue), \(enabled.count)/\(totalCards) enabled")
 
             let widthLE = self.uint16LE(UInt16(totalWidth))
             let heightLE = self.uint16LE(UInt16(totalHeight))
@@ -442,18 +444,19 @@ class USBManager: ObservableObject {
             self.sendCmd(dest: 0x00, reg: 0x0200002A, data: [0x00, 0x00])  // offset Y area1
             self.sendCmd(dest: 0x00, reg: 0x02000024, data: widthLE)       // width area1
             self.sendCmd(dest: 0x00, reg: 0x02000026, data: heightLE)      // height area1
-            self.sendCmd(dest: 0x00, reg: 0x0200002C, data: widthLE)       // width area2
+            self.sendCmd(dest: 0x00, reg: 0x0200002C, data: widthLE)       // stride area1
             self.sendCmd(dest: 0x00, reg: 0x02000055, data: [0x00, 0x00])  // offset X area3
             self.sendCmd(dest: 0x00, reg: 0x02000057, data: [0x00, 0x00])  // offset Y area3
             self.sendCmd(dest: 0x00, reg: 0x02000051, data: widthLE)       // width area3
             self.sendCmd(dest: 0x00, reg: 0x02000053, data: heightLE)      // height area3
-            self.sendCmd(dest: 0x00, reg: 0x03100000, data: self.uint16LE(UInt16(columns)))  // column count
+            self.sendCmd(dest: 0x00, reg: 0x03100000, data: self.uint16LE(UInt16(totalCards)))  // card count
             self.sendCmd(dest: 0x00, reg: 0x02000050, data: [0x00])
 
             // === Section 3: マッピングテーブル (16ブロック) ===
             let mappingBlock = self.buildMappingBlock(
                 columns: columns, rows: rows,
-                cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight
+                cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
+                scanDirection: scanDirection
             )
             for blockIndex in 0..<16 {
                 let regAddr: UInt32 = 0x03000000 + UInt32(blockIndex) * 0x100
@@ -462,15 +465,16 @@ class USBManager: ObservableObject {
 
             // === Section 4: パーカード設定 ===
             // 全ボードリセット
-            self.sendCmd(dest: 0x00, port: 0x01, board: 0xFFFF, reg: 0x0200009A, data: [0x00])
+            self.sendCmd(dest: 0x00, port: 0x00, board: 0xFFFF, reg: 0x0200009A, data: [0x00])
 
-            // 各カードのサイズを設定 (有効なカードのみ)
-            let cardOrder = self.cardOrder(columns: columns, rows: rows, enabled: enabled)
-            for boardIndex in cardOrder {
+            // 各カードのサイズを設定
+            let order = self.boardOrder(columns: columns, rows: rows,
+                                        scanDirection: scanDirection, enabled: enabled)
+            for boardIndex in order {
                 let wLE = self.uint16LE(UInt16(cabinetWidth))
                 let hLE = self.uint16LE(UInt16(cabinetHeight))
-                self.sendCmd(dest: 0x00, port: 0x01, board: UInt16(boardIndex), reg: 0x02000017, data: wLE)
-                self.sendCmd(dest: 0x00, port: 0x01, board: UInt16(boardIndex), reg: 0x02000019, data: hLE)
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000017, data: wLE)
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000019, data: hLE)
             }
 
             // === Section 5: コミット ===
@@ -487,43 +491,125 @@ class USBManager: ObservableObject {
     /// マッピングテーブルブロック (256バイト) を生成する
     ///
     /// キャプチャ解析結果:
-    /// - 各エントリは8バイト: [X座標 LE16] [0x00 0x00] [次のX LE16] [0x00 0x00]
-    /// - L→R: 0, cabinetWidth, 2*cabinetWidth, ...
-    /// - R→L: (cols-1)*cabinetWidth, (cols-2)*cabinetWidth, ...
-    /// - 256バイトに満たない場合は繰り返しパターンで埋める
-    private func buildMappingBlock(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int) -> [UInt8] {
-        var block = [UInt8]()
-        let totalCards = columns * rows
+    /// - 各エントリは4バイト: [X_LE16][Y_LE16] — カード1枚の画面上座標
+    /// - エントリ列をパターンとして256バイトになるまで繰り返し
+    /// - スキャン方向によって座標の並び順が異なる
+    private func buildMappingBlock(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int,
+                                   scanDirection: ScanDirection) -> [UInt8] {
+        let coords = cardCoordinates(columns: columns, rows: rows,
+                                     cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
+                                     scanDirection: scanDirection)
 
-        // 各カードのX座標を左→右順に列挙
-        while block.count < 256 {
-            for cardIndex in 0..<max(1, totalCards) {
-                let col = cardIndex % columns
-                let x = col * cabinetWidth
-                let y = (cardIndex / columns) * cabinetHeight
-                block.append(contentsOf: uint16LE(UInt16(x)))
-                block.append(contentsOf: [0x00, 0x00])
-                block.append(contentsOf: uint16LE(UInt16(y)))
-                block.append(contentsOf: [0x00, 0x00])
-                if block.count >= 256 { break }
-            }
+        // 各カード座標を4バイトエントリとして書き出す
+        var pattern = [UInt8]()
+        for (x, y) in coords {
+            pattern.append(contentsOf: uint16LE(UInt16(x)))
+            pattern.append(contentsOf: uint16LE(UInt16(y)))
         }
 
+        // パターンを繰り返して256バイトに充填
+        var block = [UInt8]()
+        while block.count < 256 {
+            block.append(contentsOf: pattern)
+        }
         return Array(block.prefix(256))
     }
 
-    /// 有効なカードのboard indexリストを返す
-    private func cardOrder(columns: Int, rows: Int, enabled: Set<CabinetPosition>) -> [Int] {
-        var order = [Int]()
-        for row in 0..<rows {
+    /// スキャン方向に基づくカード座標リストを生成する
+    ///
+    /// 戻り値: 各ボードインデックス順の (X, Y) ピクセル座標
+    /// ボード0, 1, 2, ... の順に、画面上のどの位置に表示するかを返す
+    private func cardCoordinates(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int,
+                                 scanDirection: ScanDirection) -> [(x: Int, y: Int)] {
+        let totalCards = columns * rows
+        var coords = [(x: Int, y: Int)]()
+
+        switch scanDirection {
+        case .leftToRight:
+            // ボード0が左上、左→右に進み、次の行へ
+            for i in 0..<totalCards {
+                let col = i % columns
+                let row = i / columns
+                coords.append((col * cabinetWidth, row * cabinetHeight))
+            }
+        case .rightToLeft:
+            // ボード0が右上、右→左に進み、次の行へ
+            for i in 0..<totalCards {
+                let col = i % columns
+                let row = i / columns
+                coords.append(((columns - 1 - col) * cabinetWidth, row * cabinetHeight))
+            }
+        case .topToBottom:
+            // ボード0が左上、上→下に進み、次の列へ
+            for i in 0..<totalCards {
+                let col = i / rows
+                let row = i % rows
+                coords.append((col * cabinetWidth, row * cabinetHeight))
+            }
+        case .serpentine:
+            // S字パターン: 偶数列は下→上、奇数列は上→下 (キャプチャで確認)
             for col in 0..<columns {
-                let pos = CabinetPosition(row: row, col: col)
-                if enabled.contains(pos) {
-                    order.append(row * columns + col)
+                if col % 2 == 0 {
+                    for row in stride(from: rows - 1, through: 0, by: -1) {
+                        coords.append((col * cabinetWidth, row * cabinetHeight))
+                    }
+                } else {
+                    for row in 0..<rows {
+                        coords.append((col * cabinetWidth, row * cabinetHeight))
+                    }
                 }
             }
         }
-        return order
+
+        return coords
+    }
+
+    /// スキャン方向に基づくボード送信順序を返す
+    ///
+    /// マッピングテーブルのエントリ順と一致する必要がある
+    private func boardOrder(columns: Int, rows: Int, scanDirection: ScanDirection,
+                            enabled: Set<CabinetPosition>) -> [Int] {
+        let totalCards = columns * rows
+        var order = [Int]()
+
+        switch scanDirection {
+        case .leftToRight:
+            for i in 0..<totalCards { order.append(i) }
+        case .rightToLeft:
+            // 行内で逆順: 各行の右端から左端へ
+            for row in 0..<rows {
+                for col in stride(from: columns - 1, through: 0, by: -1) {
+                    order.append(row * columns + col)
+                }
+            }
+        case .topToBottom:
+            // 列内を上→下: 各列を縦に走査
+            for col in 0..<columns {
+                for row in 0..<rows {
+                    order.append(row * columns + col)
+                }
+            }
+        case .serpentine:
+            // S字パターン: 偶数列は下→上、奇数列は上→下
+            for col in 0..<columns {
+                if col % 2 == 0 {
+                    for row in stride(from: rows - 1, through: 0, by: -1) {
+                        order.append(row * columns + col)
+                    }
+                } else {
+                    for row in 0..<rows {
+                        order.append(row * columns + col)
+                    }
+                }
+            }
+        }
+
+        // 有効なカードのみフィルタ
+        return order.filter { idx in
+            let row = idx / columns
+            let col = idx % columns
+            return enabled.contains(CabinetPosition(row: row, col: col))
+        }
     }
 
     /// UInt16をリトルエンディアンのバイト配列に変換
