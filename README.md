@@ -1,5 +1,7 @@
 # NovaController
 
+**🇯🇵 日本語** | [🇬🇧 English](./README.en.md)
+
 NovaStar **MSD300** LED コントローラーを macOS からネイティブに操作する SwiftUI アプリ。
 
 Windows 専用の公式ツール **NovaLCT** を使わずに、Mac だけでレイアウトと輝度を設定できる。USBPcap で取得した通信ログをリバースエンジニアリングして独自に実装。
