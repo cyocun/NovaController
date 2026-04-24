@@ -43,8 +43,15 @@ NovaController/
     └── Extensions.swift           # Color(hex:) 拡張
 captures/                          # USBPcap キャプチャ (.pcap / .txt)
 analysis/                          # プロトコル解析スクリプトとノート
+tools/wireshark/                   # プロトコル解析用 Wireshark dissector
 novastar-msd300-notes.md           # パケット仕様 / レジスタマップ
 ```
+
+## 開発ツール (任意)
+
+`tools/wireshark/` に NovaStar プロトコル用の Wireshark Lua dissector を同梱しています。
+キャプチャを自動デコードできるので、新機能のリバースエンジニアリング時に便利です。
+セットアップ手順は [`tools/wireshark/README.md`](./tools/wireshark/README.md) を参照。
 
 ## プロトコル概要
 
@@ -68,5 +75,19 @@ novastar-msd300-notes.md           # パケット仕様 / レジスタマップ
 
 - NovaStar 公式: <https://www.novastar.tech/>
 - 参考実装:
-  - [sarakusha/novastar](https://github.com/sarakusha/novastar)
+  - [sarakusha/novastar](https://github.com/sarakusha/novastar) — TypeScript 実装、MIT。プロトコル仕様と受信カード監視レジスタを参照
   - [dietervansteenwegen/Novastar_MCTRL300_basic_controller](https://github.com/dietervansteenwegen/Novastar_MCTRL300_basic_controller)
+
+## ライセンス
+
+MIT License — 詳細は [`LICENSE`](./LICENSE) を参照。
+サードパーティの帰属表示は [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) を参照。
+
+## 免責・商標
+
+- 本プロジェクトは **非公式** であり、NovaStar Technology Co., Ltd.
+  とは一切関係ありません。
+- *NovaStar*、*MSD300* は NovaStar Technology Co., Ltd. の商標または登録商標です。
+- 本ソフトウェアは独自のリバースエンジニアリングによる実装で、
+  公式ソフトウェア (NovaLCT) のコードやバイナリは一切含んでいません。
+- 使用は自己責任でお願いします。実機の損傷・保証失効などの責任は負いません。
