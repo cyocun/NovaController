@@ -3,6 +3,18 @@
 本ファイルに各リリースの変更点を記録する。
 バージョン番号は [Semantic Versioning](https://semver.org/) に準拠。
 
+## [0.1.8] - 2026-04-24
+
+### 修正
+- **Sparkle インストーラエラーを修正**: v0.1.7 でアップデート検出まで
+  は動いたが、Installer 実行時に「インストーラを起動中にエラー」で
+  失敗していた。原因は App Sandbox 下での Sparkle Installer XPC の
+  動作制限。Sandbox を無効化することで自動更新が完結するようにした。
+- 個人配布 (App Store 非公開) のため Sandbox のメリット < 実利。
+  CP210x シリアルアクセスも自由になる。
+- `com.apple.security.app-sandbox` / `device.usb` / `device.serial`
+  entitlement を削除。network.client も不要。
+
 ## [0.1.7] - 2026-04-24
 
 ### 修正

@@ -2,14 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.device.usb</key>
-	<true/>
-	<key>com.apple.security.device.serial</key>
-	<true/>
-	<!-- Sparkle: アップデートチェック / ダウンロードに必要 -->
-	<key>com.apple.security.network.client</key>
-	<true/>
+	<!--
+		App Sandbox は無効化。
+		理由:
+		1. Sparkle の Installer XPC が sandbox 下で /Applications への
+		   書き込み時にエラーになる ("インストーラを起動中にエラー")
+		2. 個人配布 (App Store 非公開) のため sandbox 必須ではない
+		3. CP210x シリアル / USB アクセスが sandbox 無効下で自由に扱える
+	-->
 </dict>
 </plist>
