@@ -74,16 +74,16 @@ struct Sidebar: View {
 
             // ナビゲーション
             VStack(spacing: 2) {
-                NavItem(icon: "sun.max", title: "輝度調整", isSelected: selectedTab == .brightness) {
+                NavItem(icon: "sun.max", title: "Brightness", isSelected: selectedTab == .brightness) {
                     selectedTab = .brightness
                 }
-                NavItem(icon: "square.grid.3x3", title: "レイアウト", isSelected: selectedTab == .layout) {
+                NavItem(icon: "square.grid.3x3", title: "Layout", isSelected: selectedTab == .layout) {
                     selectedTab = .layout
                 }
-                NavItem(icon: "testtube.2", title: "テストパターン", isSelected: selectedTab == .testPattern) {
+                NavItem(icon: "testtube.2", title: "Test Pattern", isSelected: selectedTab == .testPattern) {
                     selectedTab = .testPattern
                 }
-                NavItem(icon: "waveform.path.ecg", title: "監視", isSelected: selectedTab == .health) {
+                NavItem(icon: "waveform.path.ecg", title: "Monitoring", isSelected: selectedTab == .health) {
                     selectedTab = .health
                 }
             }
@@ -130,7 +130,7 @@ struct ConnectionStatusView: View {
                 HStack(spacing: 6) {
                     Image(systemName: usbManager.isConnected ? "xmark.circle" : "arrow.clockwise")
                         .font(.system(size: 10, weight: .medium))
-                    Text(usbManager.isConnected ? "切断" : "再接続")
+                    Text(usbManager.isConnected ? "Disconnect" : "Reconnect")
                         .font(.system(size: 11, weight: .medium))
                 }
                 .frame(maxWidth: .infinity)
@@ -151,11 +151,11 @@ struct ConnectionStatusView: View {
     }
 
     private var statusTitle: String {
-        usbManager.isConnected ? "MSD300 接続中" : "未接続"
+        usbManager.isConnected ? "MSD300 Connected" : "Not Connected"
     }
 
     private var statusSubtitle: String {
-        usbManager.isConnected ? "USB / CP210x" : "ケーブルを確認"
+        usbManager.isConnected ? "USB / CP210x" : "Check cable"
     }
 
     private func toggleConnection() {

@@ -155,7 +155,7 @@ final class HealthMonitor {
 
     private func sendNotification(board: Int, alert: AlertType, sample: HealthSample) {
         let content = UNMutableNotificationContent()
-        content.title = "受信カード #\(board + 1) 警告"
+        content.title = "Receiver Card #\(board + 1) Alert"
         content.body = messageBody(for: alert, sample: sample)
         content.sound = .default
 
@@ -172,14 +172,14 @@ final class HealthMonitor {
         switch alert {
         case .tempHigh:
             let t = sample.temperature ?? 0
-            return String(format: "温度が閾値を超えました (%.1f℃ / 上限 %.1f℃)",
+            return String(format: "Temperature above threshold (%.1f°C / max %.1f°C)",
                           t, thresholds.tempMax)
         case .voltageOutOfRange:
             let v = sample.voltage ?? 0
-            return String(format: "電圧が範囲外です (%.2fV / 範囲 %.1f〜%.1fV)",
+            return String(format: "Voltage out of range (%.2fV / %.1f–%.1fV)",
                           v, thresholds.voltageMin, thresholds.voltageMax)
         case .moduleError:
-            return "モジュールエラーを検出しました"
+            return "Module error detected"
         }
     }
 }

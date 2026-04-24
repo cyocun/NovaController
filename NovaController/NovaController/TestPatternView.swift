@@ -12,12 +12,12 @@ struct TestPatternView: View {
         HStack(spacing: 0) {
             // 左メインエリア
             VStack(alignment: .leading, spacing: 24) {
-                Text("テストパターン")
+                Text("Test Pattern")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(Color(hex: "#2d3436"))
 
                 // ディスプレイモード (通常 / フリーズ / ブラック)
-                SectionLabel(title: "ディスプレイモード")
+                SectionLabel(title: "Display Mode")
                 HStack(spacing: 8) {
                     ForEach(USBManager.DisplayMode.allCases) { mode in
                         DisplayModeButton(
@@ -31,7 +31,7 @@ struct TestPatternView: View {
                 }
 
                 // パターン (9種)
-                SectionLabel(title: "パターン")
+                SectionLabel(title: "Pattern")
                 LazyVGrid(columns: [GridItem](repeating: .init(.flexible(), spacing: 10), count: 3),
                           spacing: 10) {
                     ForEach(USBManager.TestPattern.allCases) { pattern in
@@ -53,15 +53,15 @@ struct TestPatternView: View {
             // 右設定パネル
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SettingsSection(title: "現在の状態") {
-                        StatusRow(label: "モード", value: selectedMode.rawValue)
-                        StatusRow(label: "パターン", value: selectedPattern.label)
+                    SettingsSection(title: "Current") {
+                        StatusRow(label: "Mode", value: selectedMode.rawValue)
+                        StatusRow(label: "Pattern", value: selectedPattern.label)
                     }
-                    SettingsSection(title: "ショートカット") {
-                        ShortcutRow(keys: "⌘0", label: "解除")
-                        ShortcutRow(keys: "⌘1–8", label: "各パターン")
-                        ShortcutRow(keys: "⌘⇧F", label: "フリーズ")
-                        ShortcutRow(keys: "⌘⇧B", label: "ブラック")
+                    SettingsSection(title: "Shortcuts") {
+                        ShortcutRow(keys: "⌘0", label: "Off")
+                        ShortcutRow(keys: "⌘1–8", label: "Patterns")
+                        ShortcutRow(keys: "⌘⇧F", label: "Freeze")
+                        ShortcutRow(keys: "⌘⇧B", label: "Black")
                     }
                 }
                 .padding(.horizontal, 20)

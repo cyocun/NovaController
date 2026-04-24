@@ -26,11 +26,11 @@ struct LayoutView: View {
             // 左メインエリア (プレビュー)
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
-                    Text("レイアウトプレビュー")
+                    Text("Layout Preview")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(Color(hex: "#2d3436"))
                     Spacer()
-                    Text("\(columns) × \(rows) キャビネット")
+                    Text("\(columns) × \(rows) cabinets")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
@@ -47,7 +47,7 @@ struct LayoutView: View {
                         Image(systemName: "aspectratio")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text("出力解像度: \(totalWidth) x \(totalHeight) px")
+                        Text("Output: \(totalWidth) × \(totalHeight) px")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -56,7 +56,7 @@ struct LayoutView: View {
                         Image(systemName: iconForDirection(scanDirection))
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text("方向: \(labelForDirection(scanDirection))")
+                        Text("Direction: \(labelForDirection(scanDirection))")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -64,7 +64,7 @@ struct LayoutView: View {
 
                 HStack(spacing: 8) {
                     Button(action: applyLayout) {
-                        Text("レイアウトを適用")
+                        Text("Apply Layout")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
@@ -76,7 +76,7 @@ struct LayoutView: View {
                     .disabled(!usbManager.isConnected)
 
                     Button(action: resetCards) {
-                        Text("リセット")
+                        Text("Reset")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.vertical, 10)
@@ -94,7 +94,7 @@ struct LayoutView: View {
             // 右設定パネル
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SettingsSection(title: "プリセット") {
+                    SettingsSection(title: "Preset") {
                         ForEach(USBManager.LayoutPreset.allCases) { preset in
                             Button(action: { selectedPreset = preset }) {
                                 HStack(spacing: 10) {
@@ -118,10 +118,10 @@ struct LayoutView: View {
                         }
                     }
 
-                    SettingsSection(title: "仕様") {
-                        StatusRow(label: "列 × 行", value: "\(columns) × \(rows)")
-                        StatusRow(label: "キャビネット", value: "\(cabinetWidth) × \(cabinetHeight) px")
-                        StatusRow(label: "出力解像度", value: "\(totalWidth) × \(totalHeight) px")
+                    SettingsSection(title: "Details") {
+                        StatusRow(label: "Columns × Rows", value: "\(columns) × \(rows)")
+                        StatusRow(label: "Cabinet", value: "\(cabinetWidth) × \(cabinetHeight) px")
+                        StatusRow(label: "Output", value: "\(totalWidth) × \(totalHeight) px")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -142,9 +142,9 @@ struct LayoutView: View {
 
     private func labelForDirection(_ direction: USBManager.ScanDirection) -> String {
         switch direction {
-        case .leftToRight: return "左→右"
-        case .rightToLeft: return "右→左"
-        case .serpentine: return "S字"
+        case .leftToRight: return "Left → Right"
+        case .rightToLeft: return "Right → Left"
+        case .serpentine: return "Serpentine"
         }
     }
 

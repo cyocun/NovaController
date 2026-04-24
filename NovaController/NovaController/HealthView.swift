@@ -18,23 +18,23 @@ struct HealthView: View {
             // 左メインエリア: カード一覧
             VStack(alignment: .leading, spacing: 20) {
                 HStack {
-                    Text("監視")
+                    Text("Monitoring")
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(Color(hex: "#2d3436"))
                     Spacer()
                     if let last = lastUpdate {
-                        Text("最終更新: \(timeFormatter.string(from: last))")
+                        Text("Last update: \(timeFormatter.string(from: last))")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                     }
                 }
 
                 if !usbManager.isConnected {
-                    NoticeBox(symbol: "bolt.slash", message: "MSD300 が未接続のため監視できません")
+                    NoticeBox(symbol: "bolt.slash", message: "Cannot monitor — MSD300 is disconnected")
                 } else if cardCount == 0 {
-                    NoticeBox(symbol: "questionmark.circle", message: "実機からカード構成を取得中…")
+                    NoticeBox(symbol: "questionmark.circle", message: "Fetching card configuration…")
                 } else if cards.isEmpty && !isPolling {
-                    NoticeBox(symbol: "waveform", message: "「監視を開始」で受信カードの状態を取得します")
+                    NoticeBox(symbol: "waveform", message: "Press \"Start Monitoring\" to poll receiver cards")
                 } else {
                     ScrollView {
                         VStack(spacing: 12) {
@@ -70,33 +70,33 @@ struct HealthView: View {
             // 右サイド: 実機情報 + 閾値
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SettingsSection(title: "実機情報") {
-                        StatusRow(label: "カード数",
+                    SettingsSection(title: "Device Info") {
+                        StatusRow(label: "Card Count",
                                   value: cardCount > 0 ? "\(cardCount)" : "—")
-                        StatusRow(label: "画面サイズ", value: screenSizeString)
-                        StatusRow(label: "機種ID", value: modelIdString)
+                        StatusRow(label: "Screen Size", value: screenSizeString)
+                        StatusRow(label: "Model ID", value: modelIdString)
                     }
 
-                    SettingsSection(title: "状態") {
-                        StatusRow(label: "取得済み", value: "\(cards.count)")
-                        StatusRow(label: "更新間隔", value: "5 秒")
-                        StatusRow(label: "履歴保持", value: "24 時間")
+                    SettingsSection(title: "Status") {
+                        StatusRow(label: "Polled", value: "\(cards.count)")
+                        StatusRow(label: "Interval", value: "5 sec")
+                        StatusRow(label: "History", value: "24 hours")
                     }
 
-                    SettingsSection(title: "警告閾値") {
+                    SettingsSection(title: "Thresholds") {
                         ThresholdStepper(
-                            label: "温度上限",
+                            label: "Temp max",
                             value: monitor.thresholds.tempMax,
                             range: 40...80,
                             step: 1,
-                            unit: "℃"
+                            unit: "°C"
                         ) { newValue in
                             var t = monitor.thresholds
                             t.tempMax = newValue
                             monitor.updateThresholds(t)
                         }
                         ThresholdStepper(
-                            label: "電圧下限",
+                            label: "Voltage min",
                             value: monitor.thresholds.voltageMin,
                             range: 3.0...5.5,
                             step: 0.1,
@@ -107,7 +107,7 @@ struct HealthView: View {
                             monitor.updateThresholds(t)
                         }
                         ThresholdStepper(
-                            label: "電圧上限",
+                            label: "Voltage max",
                             value: monitor.thresholds.voltageMax,
                             range: 5.0...7.0,
                             step: 0.1,
@@ -125,7 +125,7 @@ struct HealthView: View {
                                 monitor.updateThresholds(t)
                             }
                         )) {
-                            Text("モジュールエラー通知")
+                            Text("Module error alerts")
                                 .font(.system(size: 11))
                         }
                         .toggleStyle(.switch)
@@ -184,8 +184,8 @@ struct HealthView: View {
     }
 
     private var pollButtonLabel: String {
-        if !usbManager.isConnected { return "未接続" }
-        return isPolling ? "監視を停止" : "監視を開始"
+        if !usbManager.isConnected { return "Disconnected" }
+        return isPolling ? "Stop Monitoring" : "Start Monitoring"
     }
 
     private var pollButtonColor: Color {
@@ -222,7 +222,7 @@ struct CardHealthRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("カード #\(index + 1)")
+                Text("Card #\(index + 1)")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(Color(hex: "#2d3436"))
                 Spacer()
@@ -231,11 +231,11 @@ struct CardHealthRow: View {
 
             if let h = health {
                 HStack(spacing: 16) {
-                    MetricView(icon: "thermometer", label: "温度",
+                    MetricView(icon: "thermometer", label: "Temp",
                                value: temperatureString(h.scanCardTemp))
-                    MetricView(icon: "humidity", label: "湿度",
+                    MetricView(icon: "humidity", label: "Humidity",
                                value: h.scanCardHumidity.isValid ? "\(h.scanCardHumidity.value)%" : "—")
-                    MetricView(icon: "bolt", label: "電圧",
+                    MetricView(icon: "bolt", label: "Voltage",
                                value: voltageString(h.scanCardVoltage))
                     Spacer()
                     Sparkline(values: temperatureHistory, threshold: tempMax)
@@ -244,16 +244,16 @@ struct CardHealthRow: View {
 
                 if h.isMonitorCardConnected {
                     HStack(spacing: 16) {
-                        MetricView(icon: "fanblades", label: "ファン",
+                        MetricView(icon: "fanblades", label: "Fan",
                                    value: fanString(h.monitorCardFans))
-                        MetricView(icon: "smoke", label: "煙",
+                        MetricView(icon: "smoke", label: "Smoke",
                                    value: h.monitorCardSmoke.isValid
-                                       ? (h.monitorCardSmoke.value > 0 ? "警告" : "正常")
+                                       ? (h.monitorCardSmoke.value > 0 ? "Alert" : "OK")
                                        : "—")
                     }
                 }
             } else {
-                Text("データ取得中 / 未受信")
+                Text("Fetching / no data")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
@@ -270,9 +270,9 @@ struct CardHealthRow: View {
     private var statusBadge: some View {
         if let h = health {
             if h.hasModuleError {
-                StatusBadge(text: "エラー", color: Color(hex: "#e94560"))
+                StatusBadge(text: "Error", color: Color(hex: "#e94560"))
             } else {
-                StatusBadge(text: "正常", color: Color(hex: "#27ae60"))
+                StatusBadge(text: "OK", color: Color(hex: "#27ae60"))
             }
         } else {
             StatusBadge(text: "—", color: Color(hex: "#b2bec3"))

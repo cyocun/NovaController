@@ -14,3 +14,4 @@ xcuserdata/
 # Swift Package Manager
 .build/
 Packages/
+NovaController-v*.zip

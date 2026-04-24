@@ -113,24 +113,24 @@ class USBManager {
 
         var label: String {
             switch self {
-            case .normal:     return "解除"
-            case .red:        return "赤"
-            case .green:      return "緑"
-            case .blue:       return "青"
-            case .white:      return "白"
-            case .horizontal: return "横縞"
-            case .vertical:   return "縦縞"
-            case .diagonal:   return "斜線"
-            case .grayscale:  return "グレー"
+            case .normal:     return "Off"
+            case .red:        return "Red"
+            case .green:      return "Green"
+            case .blue:       return "Blue"
+            case .white:      return "White"
+            case .horizontal: return "H. Stripes"
+            case .vertical:   return "V. Stripes"
+            case .diagonal:   return "Diagonal"
+            case .grayscale:  return "Grayscale"
             }
         }
     }
 
     /// 画面全体のディスプレイモード (Blackout + Freeze レジスタで制御)
     enum DisplayMode: String, CaseIterable, Identifiable {
-        case normal = "通常"
-        case freeze = "フリーズ"
-        case black  = "ブラック"
+        case normal = "Normal"
+        case freeze = "Freeze"
+        case black  = "Black"
         var id: String { rawValue }
     }
 
@@ -185,9 +185,9 @@ class USBManager {
     /// NovaLCT で実機キャプチャした 3 パターンを固定 preset として提供する。
     /// 他のパターンが必要になった場合は再キャプチャして case を追加する。
     enum LayoutPreset: String, CaseIterable, Identifiable {
-        case fourByOneLTR = "4×1 左→右"
-        case fourByOneRTL = "4×1 右→左"
-        case twoByFourSerpentine = "2×4 S字"
+        case fourByOneLTR = "4×1 Left-to-Right"
+        case fourByOneRTL = "4×1 Right-to-Left"
+        case twoByFourSerpentine = "2×4 Serpentine"
 
         var id: String { rawValue }
 
@@ -237,7 +237,7 @@ class USBManager {
                 self.openSerialPort(portPath)
             } else {
                 DispatchQueue.main.async {
-                    self.lastError = "MSD300が見つかりません。USBケーブルを確認してください。"
+                    self.lastError = "MSD300 not found. Please check the USB cable."
                 }
                 print("[USBManager] No CP210x serial port found")
             }
@@ -294,7 +294,7 @@ class USBManager {
         guard fd >= 0 else {
             let err = String(cString: strerror(errno))
             DispatchQueue.main.async {
-                self.lastError = "ポートを開けません: \(err)"
+                self.lastError = "Failed to open port: \(err)"
             }
             print("[USBManager] Failed to open \(path): \(err)")
             return
@@ -637,7 +637,7 @@ class USBManager {
         )
         sendRaw(rgbPacket)
 
-        let targetLabel = board.map { "board #\($0)" } ?? "全パネル"
+        let targetLabel = board.map { "board #\($0)" } ?? "all panels"
         print("[USBManager] setBrightness: \(clamped)% (0x\(String(format: "%02X", value))), RGB=(\(r),\(g),\(b)), target=\(targetLabel)")
     }
 
@@ -1105,7 +1105,7 @@ class USBManager {
                 let err = String(cString: strerror(errno))
                 print("[USBManager] Write error: \(err)")
                 DispatchQueue.main.async {
-                    self.lastError = "送信エラー: \(err)"
+                    self.lastError = "Send error: \(err)"
                 }
             } else {
                 print("[USBManager] Sent \(written) bytes: \(bytes.map { String(format: "%02X", $0) }.joined(separator: " "))")

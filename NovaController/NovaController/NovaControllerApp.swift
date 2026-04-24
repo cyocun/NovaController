@@ -36,35 +36,35 @@ struct NovaControllerApp: App {
 
 // MARK: - TestPatternCommands
 
-/// 「表示」メニュー。テストパターンとディスプレイモードを ⌘ キーで即時切り替え。
+/// "View" menu — test pattern and display mode shortcuts.
 struct TestPatternCommands: Commands {
     var body: some Commands {
-        CommandMenu("表示") {
-            Button("パターン解除") { USBManager.shared.setTestPattern(.normal) }
+        CommandMenu("View") {
+            Button("Clear Pattern")  { USBManager.shared.setTestPattern(.normal) }
                 .keyboardShortcut("0", modifiers: .command)
             Divider()
-            Button("赤")           { USBManager.shared.setTestPattern(.red) }
+            Button("Red")            { USBManager.shared.setTestPattern(.red) }
                 .keyboardShortcut("1", modifiers: .command)
-            Button("緑")           { USBManager.shared.setTestPattern(.green) }
+            Button("Green")          { USBManager.shared.setTestPattern(.green) }
                 .keyboardShortcut("2", modifiers: .command)
-            Button("青")           { USBManager.shared.setTestPattern(.blue) }
+            Button("Blue")           { USBManager.shared.setTestPattern(.blue) }
                 .keyboardShortcut("3", modifiers: .command)
-            Button("白")           { USBManager.shared.setTestPattern(.white) }
+            Button("White")          { USBManager.shared.setTestPattern(.white) }
                 .keyboardShortcut("4", modifiers: .command)
-            Button("横縞")         { USBManager.shared.setTestPattern(.horizontal) }
+            Button("Horizontal Stripes") { USBManager.shared.setTestPattern(.horizontal) }
                 .keyboardShortcut("5", modifiers: .command)
-            Button("縦縞")         { USBManager.shared.setTestPattern(.vertical) }
+            Button("Vertical Stripes")   { USBManager.shared.setTestPattern(.vertical) }
                 .keyboardShortcut("6", modifiers: .command)
-            Button("斜線")         { USBManager.shared.setTestPattern(.diagonal) }
+            Button("Diagonal")       { USBManager.shared.setTestPattern(.diagonal) }
                 .keyboardShortcut("7", modifiers: .command)
-            Button("グレースケール") { USBManager.shared.setTestPattern(.grayscale) }
+            Button("Grayscale")      { USBManager.shared.setTestPattern(.grayscale) }
                 .keyboardShortcut("8", modifiers: .command)
             Divider()
-            Button("フリーズ")     { USBManager.shared.setDisplayMode(.freeze) }
+            Button("Freeze")         { USBManager.shared.setDisplayMode(.freeze) }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
-            Button("ブラック")     { USBManager.shared.setDisplayMode(.black) }
+            Button("Black")          { USBManager.shared.setDisplayMode(.black) }
                 .keyboardShortcut("b", modifiers: [.command, .shift])
-            Button("モード解除")   { USBManager.shared.setDisplayMode(.normal) }
+            Button("Clear Mode")     { USBManager.shared.setDisplayMode(.normal) }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
         }
     }
@@ -81,7 +81,7 @@ struct CheckForUpdatesView: View {
     }
 
     var body: some View {
-        Button("アップデートを確認…") {
+        Button("Check for Updates…") {
             updater.checkForUpdates()
         }
         .disabled(!checker.canCheckForUpdates)

@@ -1,95 +1,102 @@
 # NovaController
 
-**🇯🇵 日本語** | [🇬🇧 English](./README.en.md)
+[🇯🇵 日本語](./README.ja.md) | **🇬🇧 English**
 
-NovaStar **MSD300** LED コントローラーを macOS からネイティブに操作する SwiftUI アプリ。
+A native macOS (SwiftUI) application for controlling the NovaStar **MSD300**
+LED processor. Built to replace the Windows-only official tool **NovaLCT** on
+macOS, via USB-UART communication reverse-engineered from USBPcap captures.
+MSD300-only by design.
 
-Windows 専用の公式ツール **NovaLCT** を使わずに、Mac だけでレイアウトと輝度を設定できる。USBPcap で取得した通信ログをリバースエンジニアリングして独自に実装。MSD300 専用。
+## Features
 
-## 機能
+- **Layout presets** — three capture-verified patterns
+  - 4×1 left-to-right
+  - 4×1 right-to-left
+  - 2×4 serpentine
+- **Brightness control** — drag-based 270° gauge (0–100%), quick presets
+  (0 / 25 / 50 / 75 / 100%), and schedule UI
+- **Auto USB connect** — detects CP210x and opens the serial port on launch
+- **Native macOS UI** — SwiftUI, resizable window
 
-- **レイアウトプリセット** — キャプチャ実機検証済みの 3 パターン
-  - 4×1 左→右
-  - 4×1 右→左
-  - 2×4 S字
-- **輝度調整** — 0-100% のドラッグ式 270° ゲージ、プリセット（0/25/50/75/100%）、スケジュール
-- **自動 USB 接続** — 起動時に CP210x を検出してシリアルポートを開く
-- **ネイティブ macOS UI** — SwiftUI で実装、リサイズ可能ウィンドウ
+## Requirements
 
-## 要件
+- macOS 14 Sonoma or later
+- Xcode 15 or later (to build)
+- NovaStar MSD300
+- Silicon Labs CP210x VCP driver (bundled with macOS 10.13+)
 
-- macOS 14 Sonoma 以降
-- Xcode 15 以降（ビルドする場合）
-- NovaStar MSD300 本体
-- Silicon Labs CP210x VCP ドライバ（macOS 10.13 以降は標準搭載）
-
-## ビルド
+## Build
 
 ```bash
 xcodebuild -project NovaController/NovaController.xcodeproj -scheme NovaController build
 ```
 
-または `NovaController/NovaController.xcodeproj` を Xcode で開いて Run。
+Or open `NovaController/NovaController.xcodeproj` in Xcode and Run.
 
-## プロジェクト構成
+## Project Structure
 
 ```
 NovaController/
 ├── NovaController.xcodeproj/
 └── NovaController/
-    ├── NovaControllerApp.swift   # エントリポイント
-    ├── ContentView.swift          # サイドバー・エラーバナー・接続ステータス
-    ├── LayoutView.swift           # レイアウトプリセット UI + プレビュー
-    ├── BrightnessView.swift       # 輝度調整 UI（円弧ゲージ）
-    ├── USBManager.swift           # IOKit + CP210x シリアル通信、パケット組立
-    └── Extensions.swift           # Color(hex:) 拡張
-captures/                          # USBPcap キャプチャ (.pcap / .txt)
-analysis/                          # プロトコル解析スクリプトとノート
-tools/wireshark/                   # プロトコル解析用 Wireshark dissector
-novastar-msd300-notes.md           # パケット仕様 / レジスタマップ
+    ├── NovaControllerApp.swift   # app entry point
+    ├── ContentView.swift          # sidebar, error banner, connection status
+    ├── LayoutView.swift           # layout preset UI + preview
+    ├── BrightnessView.swift       # brightness UI (circular gauge)
+    ├── USBManager.swift           # IOKit + CP210x serial, packet assembly
+    └── Extensions.swift           # Color(hex:) helper
+captures/                          # USBPcap captures (.pcap / .txt)
+analysis/                          # protocol analysis scripts / notes
+tools/wireshark/                   # Wireshark dissector (dev tool)
+novastar-msd300-notes.md           # packet spec / register map
 ```
 
-## 開発ツール (任意)
+## Developer Tool (optional)
 
-`tools/wireshark/` に NovaStar プロトコル用の Wireshark Lua dissector を同梱しています。
-キャプチャを自動デコードできるので、新機能のリバースエンジニアリング時に便利です。
-セットアップ手順は [`tools/wireshark/README.md`](./tools/wireshark/README.md) を参照。
+`tools/wireshark/` includes a NovaStar Lua dissector for Wireshark. It auto-decodes
+captured packets, which dramatically speeds up reverse engineering of new features.
+See [`tools/wireshark/README.md`](./tools/wireshark/README.md) for setup.
 
-## プロトコル概要
+## Protocol at a Glance
 
-- 接続: Silicon Labs CP210x USB-UART Bridge (VID: `0x10C4`, PID: `0xEA60`)
-- シリアル設定: 115200 baud, 8N1, フロー制御なし
-- パケット: `55 AA` ヘッダ + 2B シーケンス + レジスタ R/W
-- チェックサム: `(0x5555 + sum(payload)) & 0xFFFF` を LE 格納
+- Transport: Silicon Labs CP210x USB-UART bridge (VID `0x10C4`, PID `0xEA60`)
+- Serial: 115200 baud, 8N1, no flow control
+- Packet: `55 AA` header + 2-byte sequence + register-based R/W
+- Checksum: `(0x5555 + sum(payload)) & 0xFFFF`, stored little-endian
 
-詳細は [`novastar-msd300-notes.md`](./novastar-msd300-notes.md) と [`analysis/layout_protocol_analysis.md`](./analysis/layout_protocol_analysis.md) を参照。
+See [`novastar-msd300-notes.md`](./novastar-msd300-notes.md) and
+[`analysis/layout_protocol_analysis.md`](./analysis/layout_protocol_analysis.md)
+for details.
 
-## ステータス
+## Status
 
-| 機能 | 状態 | 備考 |
-|------|------|------|
-| 輝度調整 | ✅ 実装済み | 5 パケット検証済み |
-| レイアウトプリセット | ⚠️ 実装済み（バグの可能性あり） | 3 パターンをキャプチャから再現。実機での最終検証が未完 |
-| 温度 / healthy 監視 | 🔲 未実装 | 要追加キャプチャ |
-| 自動輝度（センサー連動） | 🔲 未実装 | 設計方針は `analysis/brightness_sensor_notes.md` |
+| Feature | State | Notes |
+|---|---|---|
+| Brightness control | ✅ Implemented | Verified against 5 captured packets |
+| Layout presets | ⚠️ Implemented (potential bugs) | 3 patterns reproduced from captures; final on-device verification pending |
+| Temperature / health monitoring | 🔲 Not implemented | Register map available in `sarakusha/novastar` — no new captures needed |
+| Auto brightness (light sensor) | 🔲 Not implemented | Design notes in `analysis/brightness_sensor_notes.md` |
 
-## 関連リソース
+## Related Projects
 
-- NovaStar 公式: <https://www.novastar.tech/>
-- 参考実装:
-  - [sarakusha/novastar](https://github.com/sarakusha/novastar) — TypeScript 実装、MIT。プロトコル仕様と受信カード監視レジスタを参照
+- NovaStar official: <https://www.novastar.tech/>
+- Reference implementations:
+  - [sarakusha/novastar](https://github.com/sarakusha/novastar) — TypeScript, MIT. Source for protocol spec and receiver-card monitoring registers.
   - [dietervansteenwegen/Novastar_MCTRL300_basic_controller](https://github.com/dietervansteenwegen/Novastar_MCTRL300_basic_controller)
 
-## ライセンス
+## License
 
-MIT License — 詳細は [`LICENSE`](./LICENSE) を参照。
-サードパーティの帰属表示は [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md) を参照。
+MIT License — see [`LICENSE`](./LICENSE).
+Third-party attributions are in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
-## 免責・商標
+## Disclaimer & Trademarks
 
-- 本プロジェクトは **非公式** であり、NovaStar Technology Co., Ltd.
-  とは一切関係ありません。
-- *NovaStar*、*MSD300* は NovaStar Technology Co., Ltd. の商標または登録商標です。
-- 本ソフトウェアは独自のリバースエンジニアリングによる実装で、
-  公式ソフトウェア (NovaLCT) のコードやバイナリは一切含んでいません。
-- 使用は自己責任でお願いします。実機の損傷・保証失効などの責任は負いません。
+- This is an **unofficial** project and is **not affiliated with** NovaStar
+  Technology Co., Ltd.
+- *NovaStar* and *MSD300* are trademarks or registered trademarks of
+  NovaStar Technology Co., Ltd.
+- The implementation was developed independently through reverse engineering;
+  no official NovaLCT code or binaries are included.
+- Use at your own risk. The authors are not responsible for any damage to
+  devices, loss of warranty, or other consequences arising from the use of
+  this software.

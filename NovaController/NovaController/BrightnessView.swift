@@ -39,7 +39,7 @@ struct BrightnessView: View {
         HStack(spacing: 0) {
             // 左メインエリア
             VStack(alignment: .leading, spacing: 24) {
-                Text("輝度調整")
+                Text("Brightness")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(Color(hex: "#2d3436"))
 
@@ -94,13 +94,13 @@ struct BrightnessView: View {
             // 右設定パネル (フラット)
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SettingsSection(title: "対象") {
+                    SettingsSection(title: "Target") {
                         Menu {
-                            Button("全パネル") { targetBoard = nil }
+                            Button("All Panels") { targetBoard = nil }
                             if boardCount > 0 {
                                 Divider()
                                 ForEach(0..<boardCount, id: \.self) { idx in
-                                    Button("ボード #\(idx)") { targetBoard = UInt16(idx) }
+                                    Button("Board #\(idx)") { targetBoard = UInt16(idx) }
                                 }
                             }
                         } label: {
@@ -121,26 +121,26 @@ struct BrightnessView: View {
                         .menuStyle(.borderlessButton)
                         .menuIndicator(.hidden)
                         if boardCount == 0 {
-                            Text("カード数を取得中…")
+                            Text("Fetching card count…")
                                 .font(.system(size: 10))
                                 .foregroundColor(.secondary)
                         }
                     }
 
-                    SettingsSection(title: "RGB ホワイトバランス") {
+                    SettingsSection(title: "RGB White Balance") {
                         RGBSlider(label: "R", value: $red, tint: Color(hex: "#e74c3c"))
                         RGBSlider(label: "G", value: $green, tint: Color(hex: "#2ecc71"))
                         RGBSlider(label: "B", value: $blue, tint: Color(hex: "#3498db"))
 
                         Button(action: resetRGB) {
-                            Text("ニュートラルに戻す (240,240,240)")
+                            Text("Reset to neutral (240,240,240)")
                                 .font(.system(size: 10, weight: .medium))
                         }
                         .buttonStyle(SmallButtonStyle(color: Color(hex: "#95a5a6")))
                     }
 
-                    SettingsSection(title: "スケジュール") {
-                        Toggle("スケジュール有効", isOn: $scheduleEnabled)
+                    SettingsSection(title: "Schedule") {
+                        Toggle("Enable schedule", isOn: $scheduleEnabled)
                             .font(.system(size: 12))
                             .toggleStyle(.switch)
                             .controlSize(.mini)
@@ -153,18 +153,18 @@ struct BrightnessView: View {
                             Button(action: {
                                 schedules.append(BrightnessSchedule(time: "12:00", brightness: 50))
                             }) {
-                                Label("追加", systemImage: "plus.circle")
+                                Label("Add", systemImage: "plus.circle")
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .buttonStyle(SmallButtonStyle(color: Color(hex: "#0f3460")))
                         }
                     }
 
-                    SettingsSection(title: "状態") {
-                        StatusRow(label: "UI 値", value: "\(brightnessInt)%")
-                        StatusRow(label: "実機の現値",
+                    SettingsSection(title: "Status") {
+                        StatusRow(label: "UI value", value: "\(brightnessInt)%")
+                        StatusRow(label: "Device value",
                                   value: usbManager.currentBrightness.map { "\($0)%" } ?? "—")
-                        StatusRow(label: "適用済み", value: isApplied ? "はい" : "いいえ")
+                        StatusRow(label: "Applied", value: isApplied ? "Yes" : "No")
                     }
                 }
                 .padding(.horizontal, 20)
@@ -176,8 +176,8 @@ struct BrightnessView: View {
     }
 
     private var targetLabel: String {
-        if let board = targetBoard { return "ボード #\(board)" }
-        return "全パネル"
+        if let board = targetBoard { return "Board #\(board)" }
+        return "All Panels"
     }
 
     private func resetRGB() {
@@ -196,8 +196,8 @@ struct BrightnessView: View {
     }
 
     private var applyButtonLabel: String {
-        if !usbManager.isConnected { return "未接続" }
-        return isApplied ? "適用済み" : "輝度を適用"
+        if !usbManager.isConnected { return "Disconnected" }
+        return isApplied ? "Applied" : "Apply Brightness"
     }
 
     private var applyButtonColor: Color {
@@ -257,7 +257,7 @@ struct BrightnessGaugeView: View {
                             .font(.system(size: 22, weight: .semibold, design: .rounded))
                             .foregroundColor(.secondary)
                     }
-                    Text("ドラッグで調整")
+                    Text("Drag to adjust")
                         .font(.system(size: 9, weight: .medium))
                         .foregroundColor(.secondary.opacity(0.6))
                         .tracking(1)
