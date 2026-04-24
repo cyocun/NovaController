@@ -35,7 +35,7 @@
 	<key>SUFeedURL</key>
 	<string>https://cyocun.github.io/novaCLT4Mac/appcast.xml</string>
 	<key>SUPublicEDKey</key>
-	<string>REPLACE_WITH_EDDSA_PUBLIC_KEY</string>
+	<string>kUdjCNJ5scOVYJlXAsMMs7GfY7IYoHoqX8/fN6T0nK0=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUScheduledCheckInterval</key>
