@@ -27,12 +27,28 @@ class USBManager {
     var deviceName: String = ""
     var lastError: String? = nil
 
+    /// 実機から読み取った最新の全体輝度 (0–100%)。未読なら nil
+    var currentBrightness: Int? = nil
+    /// 実機から読み取った最新の RGB 輝度 (各 0–255)。未読なら nil
+    var currentRGB: RGBLevel? = nil
+    /// 直近に送信したテストパターン (UI 同期用)
+    var currentPattern: TestPattern = .normal
+    /// 直近に送信したディスプレイモード (UI 同期用)
+    var currentDisplayMode: DisplayMode = .normal
+    /// 接続直後に実機から読み取ったハードウェア情報。未取得なら nil
+    var connectedDeviceInfo: DeviceInfo? = nil
+
     // 内部状態は UI 追跡対象外
     @ObservationIgnored private var serialPort: Int32 = -1
     @ObservationIgnored private var readSource: DispatchSourceRead?
     @ObservationIgnored private var serialQueue = DispatchQueue(label: "com.novacontroller.serial", qos: .userInitiated)
     @ObservationIgnored private var messageSerial: UInt16 = 0
     @ObservationIgnored private let serialLock = NSLock()
+    /// UART は本来ストリームなので、複数応答が連結/分割されて届く可能性がある。
+    /// ヘッダ AA 55 + 長さフィールドで 1 パケット単位に切り出すための受信バッファ。
+    /// `[UInt8]` で持つ理由: `Data.removeFirst(n)` は内部 startIndex を進めるだけで
+    /// その後 `data[0]` で範囲外アクセス → クラッシュするため。Array なら 0 ベース安全。
+    @ObservationIgnored private var rxBuffer = [UInt8]()
 
     /// 応答待ちの continuation (シーケンス番号キー)
     @ObservationIgnored private var pendingReads: [UInt16: CheckedContinuation<Data?, Never>] = [:]
@@ -60,6 +76,12 @@ class USBManager {
         static let rgbBrightness: UInt32 = 0x020001E3
         /// テストパターン
         static let testPattern: UInt32 = 0x02000101
+        /// ブラックアウト (0xFF=黒 / 0x00=解除) 1バイト
+        /// companion-module CHOICES_DISPLAYMODE_MCTRL のパケットから確定
+        static let blackout: UInt32 = 0x02000100
+        /// フリーズ (0xFF=静止 / 0x00=解除) 1バイト
+        /// companion-module CHOICES_DISPLAYMODE_MCTRL のパケットから確定
+        static let freeze: UInt32 = 0x02000102
         /// 画面幅（ピクセル単位）
         static let screenWidth: UInt32 = 0x02000002
         /// 画面高さ（ピクセル単位）
@@ -67,6 +89,69 @@ class USBManager {
         /// スキャン方向関連 (layout3.pcapで確認)
         /// 公式名: `ScannerMappingAddr` (受信カード側)
         static let scanDirection: UInt32 = 0x01000088
+    }
+
+    // MARK: - テストパターン / ディスプレイモード
+
+    /// 内蔵テストパターン
+    ///
+    /// `Register.testPattern (0x02000101)` に 1 バイト書き込むと受信カードが該当パターンを表示する。
+    /// 値は dietervansteenwegen/Novastar_MCTRL300_basic_controller および
+    /// bitfocus/companion-module-novastar-controller のキャプチャで確認済み。
+    enum TestPattern: UInt8, CaseIterable, Identifiable {
+        case normal     = 1  // パターン解除 (通常映像)
+        case red        = 2
+        case green      = 3
+        case blue       = 4
+        case white      = 5
+        case horizontal = 6  // 横縞
+        case vertical   = 7  // 縦縞
+        case diagonal   = 8  // 斜線
+        case grayscale  = 9
+
+        var id: UInt8 { rawValue }
+
+        var label: String {
+            switch self {
+            case .normal:     return "解除"
+            case .red:        return "赤"
+            case .green:      return "緑"
+            case .blue:       return "青"
+            case .white:      return "白"
+            case .horizontal: return "横縞"
+            case .vertical:   return "縦縞"
+            case .diagonal:   return "斜線"
+            case .grayscale:  return "グレー"
+            }
+        }
+    }
+
+    /// 画面全体のディスプレイモード (Blackout + Freeze レジスタで制御)
+    enum DisplayMode: String, CaseIterable, Identifiable {
+        case normal = "通常"
+        case freeze = "フリーズ"
+        case black  = "ブラック"
+        var id: String { rawValue }
+    }
+
+    /// R/G/B 各チャンネルの輝度値 (0–255)
+    struct RGBLevel: Equatable {
+        var r: UInt8
+        var g: UInt8
+        var b: UInt8
+        static let neutral = RGBLevel(r: 0xF0, g: 0xF0, b: 0xF0)
+    }
+
+    /// 接続中のコントローラから読み取ったハードウェア情報
+    struct DeviceInfo: Equatable {
+        /// 受信カード総数 (`Sender_NetworkInterfaceCardNumber` = `cols × rows`)
+        let cardCount: Int
+        /// 画面全体の幅 (px) — 0 のときは取得失敗または未設定
+        let screenWidth: Int
+        /// 画面全体の高さ (px)
+        let screenHeight: Int
+        /// コントローラ機種ID (`ReadControllerModelId`、生値)。MSD300 は固定値が返る
+        let controllerModelId: UInt16?
     }
 
     // MARK: - パケット構造定数 (キャプチャにより確認済み)
@@ -251,6 +336,15 @@ class USBManager {
         sendConnectionCommand()
         startReading()
 
+        // 接続直後に現在の輝度を問い合わせて UI 表示に反映する
+        readBrightness()
+        readRGBBrightness()
+
+        // ハードウェア情報 (カード数 / 画面サイズ / 機種ID) を非同期取得
+        Task { [weak self] in
+            await self?.readDeviceInfo()
+        }
+
         print("[USBManager] Connected to \(path) at \(baudRate) baud")
     }
 
@@ -264,9 +358,14 @@ class USBManager {
             serialPort = -1
         }
 
+        rxBuffer.removeAll(keepingCapacity: true)
+
         DispatchQueue.main.async {
             self.isConnected = false
             self.deviceName = ""
+            self.connectedDeviceInfo = nil
+            self.currentBrightness = nil
+            self.currentRGB = nil
         }
         print("[USBManager] Disconnected")
     }
@@ -398,46 +497,102 @@ class USBManager {
         print("[USBManager] Connection handshake sent")
     }
 
-    /// レスポンスを処理
+    /// シリアル受信データを蓄積し、完全な 1 パケットを切り出して処理する
     ///
-    /// 応答フォーマット (キャプチャ確認済み, 20バイト以上):
-    /// `AA 55 [seq_hi seq_lo] 00 FE [devtype] [port] [board_lo board_hi]`
-    /// `[dir] [reserved] [reg LE 4B] [len LE 2B] [data...] [chk_lo chk_hi]`
+    /// UART は本来ストリームなので、応答パケットが複数連結されたり 1 パケットが
+    /// 分割されたりして届く。`rxBuffer` に蓄積し、ヘッダ `AA 55` + 長さフィールドで
+    /// パケット境界を判定する。
     private func handleResponse(_ data: Data) {
-        guard data.count >= 2 else { return }
+        rxBuffer.append(contentsOf: data)
+        while let packet = extractNextPacket() {
+            processPacket(packet)
+        }
+    }
+
+    /// `rxBuffer` から完全な 1 パケットを取り出す。不足ならば nil。
+    private func extractNextPacket() -> Data? {
+        // ヘッダ AA 55 を探す (見つからなければ末尾 1 バイトだけ残して捨てる)
+        let headerIdx = findResponseHeader()
+        if let idx = headerIdx, idx > 0 {
+            rxBuffer.removeFirst(idx)
+        } else if headerIdx == nil {
+            // ヘッダ未発見: 次の AA 候補に備えて末尾 1 バイトだけ残す
+            if rxBuffer.count > 1 {
+                rxBuffer.removeFirst(rxBuffer.count - 1)
+            }
+            return nil
+        }
+
+        // ヘッダ〜長さフィールド (offset 17 まで) が揃うのを待つ
+        guard rxBuffer.count >= 18 else { return nil }
+        let len = Int(rxBuffer[16]) | (Int(rxBuffer[17]) << 8)
+        let totalLen = 18 + len + 2  // header(18) + payload(len) + checksum(2)
+        guard rxBuffer.count >= totalLen else { return nil }
+
+        let packet = Array(rxBuffer[0..<totalLen])
+        rxBuffer.removeFirst(totalLen)
+        return Data(packet)
+    }
+
+    /// rxBuffer から AA 55 の開始位置を探す。見つからなければ nil。
+    private func findResponseHeader() -> Int? {
+        guard rxBuffer.count >= 2 else { return nil }
+        for i in 0...(rxBuffer.count - 2) {
+            if rxBuffer[i] == Packet.headerResponse[0],
+               rxBuffer[i + 1] == Packet.headerResponse[1] {
+                return i
+            }
+        }
+        return nil
+    }
+
+    /// 完全な応答パケットを処理する
+    ///
+    /// 応答フォーマット (mctrl300.py / 実機ログから確定):
+    /// `AA 55 [ack] [serno] FE [src] [devtype] [port] [board_lo board_hi]`
+    /// `[dir] [reserved] [reg LE 4B] [len LE 2B] [data...] [chk_lo chk_hi]`
+    ///
+    /// 注: `bytes[2]` は ACK バイト (0x00 = 成功 / 非ゼロ = エラー)、
+    /// `bytes[3]` が送信時 serno の **下位 1 バイト**。送信時 serno (UInt16) の
+    /// 下位バイトでマッチングする。
+    private func processPacket(_ data: Data) {
         let bytes = [UInt8](data)
+        guard bytes.count >= 20 else { return }
 
-        // 応答ヘッダ (AA 55) 以外は不明データとしてログのみ
-        guard bytes[0] == Packet.headerResponse[0], bytes[1] == Packet.headerResponse[1] else {
-            print("[USBManager] Unexpected data: \(bytes.prefix(10).map { String(format: "%02X", $0) }.joined(separator: " "))")
-            return
-        }
-
-        guard bytes.count >= 20 else {
-            print("[USBManager] Response (short, \(bytes.count)B)")
-            return
-        }
-
-        let seq = (UInt16(bytes[2]) << 8) | UInt16(bytes[3])
+        let ack = bytes[2]
+        let sernoLow = bytes[3]
         let reg = UInt32(bytes[12]) | (UInt32(bytes[13]) << 8) | (UInt32(bytes[14]) << 16) | (UInt32(bytes[15]) << 24)
         let len = Int(bytes[16]) | (Int(bytes[17]) << 8)
         let payloadEnd = min(18 + len, bytes.count - 2)
         let payload = Data(bytes[18..<payloadEnd])
 
-        // 非同期読み取りを待っている呼び出しがあれば resume
+        // 送信時 serno (UInt16) の下位バイトをキーに pendingReads を検索
         pendingLock.lock()
-        let waiter = pendingReads.removeValue(forKey: seq)
+        let waitingKey = pendingReads.keys.first { UInt8($0 & 0xFF) == sernoLow }
+        let waiter = waitingKey.flatMap { pendingReads.removeValue(forKey: $0) }
         pendingLock.unlock()
         if let cont = waiter {
-            cont.resume(returning: payload)
+            // ACK エラー時は payload を渡さず nil
+            cont.resume(returning: ack == 0 ? payload : nil)
+            return
+        }
+
+        // ACK エラー時は内部状態を上書きしない
+        guard ack == 0 else {
+            print("[USBManager] ⚠️ ACK error 0x\(String(format: "%02X", ack)) reg=0x\(String(format: "%08X", reg)) sernoLow=0x\(String(format: "%02X", sernoLow))")
             return
         }
 
         if reg == Register.globalBrightness, let raw = payload.first {
             let percent = Int((Double(raw) / 255.0 * 100.0).rounded())
-            print("[USBManager] Brightness response: 0x\(String(format: "%02X", raw)) (\(percent)%) seq=0x\(String(format: "%04X", seq))")
+            DispatchQueue.main.async { self.currentBrightness = percent }
+            print("[USBManager] Brightness response: 0x\(String(format: "%02X", raw)) (\(percent)%)")
+        } else if reg == Register.rgbBrightness, payload.count >= 3 {
+            let level = RGBLevel(r: payload[0], g: payload[1], b: payload[2])
+            DispatchQueue.main.async { self.currentRGB = level }
+            print("[USBManager] RGB response: R=\(level.r) G=\(level.g) B=\(level.b)")
         } else {
-            print("[USBManager] Response reg=0x\(String(format: "%08X", reg)) len=\(len) seq=0x\(String(format: "%04X", seq))")
+            print("[USBManager] Response reg=0x\(String(format: "%08X", reg)) len=\(len)")
         }
     }
 
@@ -449,55 +604,166 @@ class USBManager {
     /// 1. globalBrightness (0x02000001) に輝度値 1バイト書き込み
     /// 2. rgbBrightness (0x020001E3) に R,G,B,0x00 の4バイト書き込み
     /// NovaLCTは毎回この2パケットをセットで送信する。
-    func setBrightness(_ brightness: Int, r: UInt8 = 0xF0, g: UInt8 = 0xF0, b: UInt8 = 0xF0) {
+    ///
+    /// - Parameter board: nil の場合は全パネル (dest=送信カード, board=0xFFFF)。
+    ///                    Int 指定時は該当受信カードのみ (dest=受信カード, board=指定値)。
+    ///                    「色味が違うパネルだけ絞る」「特定板の白バランス補正」等の用途。
+    func setBrightness(_ brightness: Int,
+                       r: UInt8 = 0xF0, g: UInt8 = 0xF0, b: UInt8 = 0xF0,
+                       board: UInt16? = nil) {
         let clamped = max(0, min(100, brightness))
         let value = UInt8(Double(clamped) / 100.0 * 255.0)
 
-        // パケット1: 全体輝度 (dest=0x00 送信カード宛)
+        let dest: UInt8 = (board == nil) ? Packet.destSendingCard : Packet.destReceivingCard
+        let boardIndex: UInt16 = board ?? 0xFFFF
+
+        // パケット1: 全体輝度
         let brightnessPacket = buildPacket(
             isWrite: true,
             register: Register.globalBrightness,
             data: [value],
-            dest: Packet.destSendingCard
+            dest: dest,
+            boardIndex: boardIndex
         )
         sendRaw(brightnessPacket)
 
-        // パケット2: RGB個別輝度 (毎回 F0 F0 F0 00 をセットで送信)
+        // パケット2: RGB個別輝度 (毎回 R G B 00 をセットで送信)
         let rgbPacket = buildPacket(
             isWrite: true,
             register: Register.rgbBrightness,
             data: [r, g, b, 0x00],
-            dest: Packet.destSendingCard
+            dest: dest,
+            boardIndex: boardIndex
         )
         sendRaw(rgbPacket)
 
-        print("[USBManager] setBrightness: \(clamped)% (0x\(String(format: "%02X", value))), RGB=(\(r),\(g),\(b))")
+        let targetLabel = board.map { "board #\($0)" } ?? "全パネル"
+        print("[USBManager] setBrightness: \(clamped)% (0x\(String(format: "%02X", value))), RGB=(\(r),\(g),\(b)), target=\(targetLabel)")
     }
 
-    /// 現在の輝度を読み取る
+    /// 現在の全体輝度を読み取る (応答は `currentBrightness` に反映)
+    ///
+    /// Read 時は board=0x0000 が必要 (mctrl300.py 準拠)。Write のデフォルト 0xFFFF
+    /// のままだと実機が ACK エラー (0x05) を返す。
     func readBrightness() {
         let packet = buildPacket(
             isWrite: false,
             register: Register.globalBrightness,
-            dest: Packet.destSendingCard
+            dest: Packet.destSendingCard,
+            boardIndex: 0x0000,
+            lengthOverride: 1
         )
         sendRaw(packet)
         print("[USBManager] readBrightness requested")
     }
 
-    // MARK: - 公開API: テストパターン
+    /// 現在の RGB 輝度を読み取る (応答は `currentRGB` に反映)
+    func readRGBBrightness() {
+        let packet = buildPacket(
+            isWrite: false,
+            register: Register.rgbBrightness,
+            dest: Packet.destSendingCard,
+            boardIndex: 0x0000,
+            lengthOverride: 4
+        )
+        sendRaw(packet)
+        print("[USBManager] readRGBBrightness requested")
+    }
 
-    /// テストパターンを設定する
-    func setTestPattern(_ pattern: Int) {
-        let clamped = UInt8(max(1, min(9, pattern)))
+    // MARK: - 公開API: ハードウェア情報取得
+
+    /// 実機からハードウェア情報を取得して `connectedDeviceInfo` に反映する
+    ///
+    /// 接続直後に一度呼ばれる想定。レジスタ参照:
+    /// - 0x03100000 (`Sender_NetworkInterfaceCardNumber`, 2B): 受信カード総数
+    /// - 0x020001EC (`SenderVideoEnclosingAddr`, 4B): 画面サイズ (W LE16, H LE16)
+    /// - 0x00000002 (`ReadControllerModelId`, 2B): コントローラ機種ID
+    func readDeviceInfo() async {
+        async let cardCountData  = readRegister(0x03100000, length: 2,
+                                                dest: Packet.destSendingCard)
+        async let screenSizeData = readRegister(0x020001EC, length: 4,
+                                                dest: Packet.destSendingCard)
+        async let modelIdData    = readRegister(0x00000002, length: 2,
+                                                dest: Packet.destSendingCard)
+
+        let (countD, sizeD, modelD) = await (cardCountData, screenSizeData, modelIdData)
+
+        func uint16LE(_ d: Data, offset: Int = 0) -> Int {
+            guard d.count >= offset + 2 else { return 0 }
+            return Int(d[offset]) | (Int(d[offset + 1]) << 8)
+        }
+
+        let cardCount = countD.map { uint16LE($0) } ?? 0
+        let width  = sizeD.map { uint16LE($0, offset: 0) } ?? 0
+        let height = sizeD.map { uint16LE($0, offset: 2) } ?? 0
+        let modelId: UInt16? = modelD.flatMap { d in
+            d.count >= 2 ? UInt16(uint16LE(d)) : nil
+        }
+
+        let info = DeviceInfo(cardCount: cardCount,
+                              screenWidth: width,
+                              screenHeight: height,
+                              controllerModelId: modelId)
+        await MainActor.run {
+            self.connectedDeviceInfo = info
+        }
+        print("[USBManager] DeviceInfo: cards=\(cardCount), screen=\(width)×\(height)px, modelId=\(modelId.map { String(format: "0x%04X", $0) } ?? "nil")")
+    }
+
+    // MARK: - 公開API: テストパターン / ディスプレイモード
+
+    /// 内蔵テストパターンを設定する
+    ///
+    /// `.normal` を送ると Pattern レジスタに 1 を書き込み、パターン表示を解除する。
+    /// 結果は `currentPattern` に反映され、`currentDisplayMode` が `.normal` 以外の
+    /// 場合は先に解除してからパターンを送る (ブラック/フリーズ中だとパターンが見えないため)。
+    func setTestPattern(_ pattern: TestPattern) {
+        if currentDisplayMode != .normal {
+            setDisplayMode(.normal)
+        }
         let packet = buildPacket(
             isWrite: true,
             register: Register.testPattern,
-            data: [clamped],
+            data: [pattern.rawValue],
             dest: Packet.destSendingCard
         )
         sendRaw(packet)
-        print("[USBManager] setTestPattern: \(clamped)")
+        DispatchQueue.main.async { self.currentPattern = pattern }
+        print("[USBManager] setTestPattern: \(pattern.label)")
+    }
+
+    /// ディスプレイモード (通常/フリーズ/ブラック) を設定する
+    ///
+    /// `.normal` は Blackout(0x02000100) + TestPattern(0x02000101) + Freeze(0x02000102) を
+    /// 連続 3 バイトで 0 クリアする (companion-module の Normal パケットと同型)。
+    func setDisplayMode(_ mode: DisplayMode) {
+        switch mode {
+        case .normal:
+            // 3 連続レジスタを一括ゼロクリアして全フラグ解除
+            let packet = buildPacket(
+                isWrite: true,
+                register: Register.blackout,
+                data: [0x00, 0x00, 0x00]
+            )
+            sendRaw(packet)
+            DispatchQueue.main.async { self.currentPattern = .normal }
+        case .freeze:
+            let packet = buildPacket(
+                isWrite: true,
+                register: Register.freeze,
+                data: [0xFF]
+            )
+            sendRaw(packet)
+        case .black:
+            let packet = buildPacket(
+                isWrite: true,
+                register: Register.blackout,
+                data: [0xFF]
+            )
+            sendRaw(packet)
+        }
+        DispatchQueue.main.async { self.currentDisplayMode = mode }
+        print("[USBManager] setDisplayMode: \(mode.rawValue)")
     }
 
     // MARK: - 公開API: 受信カードリセット
@@ -799,16 +1065,26 @@ class USBManager {
     ///
     /// - Parameters:
     ///   - boardIndex: 受信カードのインデックス (0..<cardCount)
-    ///   - port: ポートアドレス (既定 0xFF = 全ポート)
-    func readCardHealth(boardIndex: UInt16, port: UInt8 = Packet.portAll) async -> CardHealth? {
-        guard let data = await readRegister(Self.cardHealthRegister,
-                                            length: Self.cardHealthLength,
-                                            dest: Packet.destReceivingCard,
-                                            port: port,
-                                            board: boardIndex,
-                                            deviceType: Packet.deviceTypeReceivingCard) else {
+    ///   - port: ポートアドレス (既定 0x00 = port 0。MSD300 は単一ポート想定)
+    ///
+    /// 既定は port=0x00。NovaLCT のキャプチャと sarakusha/novastar の実装は
+    /// 「特定ポート」を指定して受信カードへ問い合わせる形を取っているため。
+    func readCardHealth(boardIndex: UInt16, port: UInt8 = 0x00) async -> CardHealth? {
+        let data = await readRegister(Self.cardHealthRegister,
+                                      length: Self.cardHealthLength,
+                                      dest: Packet.destReceivingCard,
+                                      port: port,
+                                      board: boardIndex,
+                                      deviceType: Packet.deviceTypeReceivingCard)
+        guard let data = data else {
+            print("[USBManager] readCardHealth(board=\(boardIndex)) timeout / no response")
             return nil
         }
+        if data.isEmpty {
+            print("[USBManager] readCardHealth(board=\(boardIndex)) empty payload")
+            return nil
+        }
+        print("[USBManager] readCardHealth(board=\(boardIndex)) got \(data.count) bytes")
         return CardHealth.parse(data)
     }
 

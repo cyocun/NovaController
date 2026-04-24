@@ -18,7 +18,19 @@ struct BrightnessView: View {
         BrightnessSchedule(time: "22:00", brightness: 30),
     ]
     @State private var lastApplied: Double? = nil
+
+    // RGB ホワイトバランス (0-255)。neutral = 0xF0 (=240)
+    @State private var red: Double = 240
+    @State private var green: Double = 240
+    @State private var blue: Double = 240
+
+    /// 適用対象パネル。nil=全パネル、値=特定ボード index
+    @State private var targetBoard: UInt16? = nil
+
     private let usbManager = USBManager.shared
+
+    /// 実機から取得した受信カード数 (未取得時は 0)
+    private var boardCount: Int { usbManager.connectedDeviceInfo?.cardCount ?? 0 }
 
     var isApplied: Bool { lastApplied == brightness }
     private var brightnessInt: Int { Int(brightness.rounded()) }
@@ -82,6 +94,51 @@ struct BrightnessView: View {
             // 右設定パネル (フラット)
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
+                    SettingsSection(title: "対象") {
+                        Menu {
+                            Button("全パネル") { targetBoard = nil }
+                            if boardCount > 0 {
+                                Divider()
+                                ForEach(0..<boardCount, id: \.self) { idx in
+                                    Button("ボード #\(idx)") { targetBoard = UInt16(idx) }
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Text(targetLabel)
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(Color(hex: "#2d3436"))
+                                Spacer()
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 7)
+                            .background(Color(hex: "#f5f6fa"))
+                            .cornerRadius(6)
+                        }
+                        .menuStyle(.borderlessButton)
+                        .menuIndicator(.hidden)
+                        if boardCount == 0 {
+                            Text("カード数を取得中…")
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+
+                    SettingsSection(title: "RGB ホワイトバランス") {
+                        RGBSlider(label: "R", value: $red, tint: Color(hex: "#e74c3c"))
+                        RGBSlider(label: "G", value: $green, tint: Color(hex: "#2ecc71"))
+                        RGBSlider(label: "B", value: $blue, tint: Color(hex: "#3498db"))
+
+                        Button(action: resetRGB) {
+                            Text("ニュートラルに戻す (240,240,240)")
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        .buttonStyle(SmallButtonStyle(color: Color(hex: "#95a5a6")))
+                    }
+
                     SettingsSection(title: "スケジュール") {
                         Toggle("スケジュール有効", isOn: $scheduleEnabled)
                             .font(.system(size: 12))
@@ -104,7 +161,9 @@ struct BrightnessView: View {
                     }
 
                     SettingsSection(title: "状態") {
-                        StatusRow(label: "現在の輝度", value: "\(brightnessInt)%")
+                        StatusRow(label: "UI 値", value: "\(brightnessInt)%")
+                        StatusRow(label: "実機の現値",
+                                  value: usbManager.currentBrightness.map { "\($0)%" } ?? "—")
                         StatusRow(label: "適用済み", value: isApplied ? "はい" : "いいえ")
                     }
                 }
@@ -116,9 +175,24 @@ struct BrightnessView: View {
         }
     }
 
+    private var targetLabel: String {
+        if let board = targetBoard { return "ボード #\(board)" }
+        return "全パネル"
+    }
+
+    private func resetRGB() {
+        red = 240; green = 240; blue = 240
+    }
+
     private func applyBrightness() {
         lastApplied = brightness
-        USBManager.shared.setBrightness(brightnessInt)
+        USBManager.shared.setBrightness(
+            brightnessInt,
+            r: UInt8(red.rounded()),
+            g: UInt8(green.rounded()),
+            b: UInt8(blue.rounded()),
+            board: targetBoard
+        )
     }
 
     private var applyButtonLabel: String {
@@ -264,6 +338,33 @@ struct AdjustButton: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - RGBSlider
+
+struct RGBSlider: View {
+    let label: String
+    @Binding var value: Double
+    let tint: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(tint)
+                    .frame(width: 14, alignment: .leading)
+                Slider(value: $value, in: 0...255)
+                    .tint(tint)
+                    .controlSize(.mini)
+                Text("\(Int(value.rounded()))")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.secondary)
+                    .frame(width: 28, alignment: .trailing)
+                    .monospacedDigit()
+            }
+        }
     }
 }
 

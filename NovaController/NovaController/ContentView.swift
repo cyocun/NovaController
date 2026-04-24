@@ -5,7 +5,7 @@ struct ContentView: View {
     private let usbManager = USBManager.shared
 
     enum Tab {
-        case layout, brightness, health
+        case layout, brightness, testPattern, health
     }
 
     var body: some View {
@@ -20,6 +20,8 @@ struct ContentView: View {
                         LayoutView()
                     case .brightness:
                         BrightnessView()
+                    case .testPattern:
+                        TestPatternView()
                     case .health:
                         HealthView()
                     }
@@ -77,6 +79,9 @@ struct Sidebar: View {
                 }
                 NavItem(icon: "square.grid.3x3", title: "レイアウト", isSelected: selectedTab == .layout) {
                     selectedTab = .layout
+                }
+                NavItem(icon: "testtube.2", title: "テストパターン", isSelected: selectedTab == .testPattern) {
+                    selectedTab = .testPattern
                 }
                 NavItem(icon: "waveform.path.ecg", title: "監視", isSelected: selectedTab == .health) {
                     selectedTab = .health
