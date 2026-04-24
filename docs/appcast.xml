@@ -13,6 +13,19 @@
         -->
 
         <item>
+            <title>Version 0.1.6</title>
+            <pubDate>Fri, 24 Apr 2026 11:47:10 +0000</pubDate>
+            <sparkle:version>0.1.6</sparkle:version>
+            <sparkle:shortVersionString>0.1.6</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure
+                url="https://github.com/cyocun/NovaController/releases/download/v0.1.6/NovaController-v0.1.6-macOS.zip"
+                length="1403702"
+                type="application/octet-stream"
+                sparkle:edSignature="BjQujo0aATny/rw3e+A8H3WDgsGZ6oeHSq1KiBijOoLtXvjenRym0RPWe0KdYpveqCaKP81XHV3bWpCxyv1DCw=="/>
+        </item>
+
+        <item>
             <title>Version 0.1.5</title>
             <pubDate>Fri, 24 Apr 2026 11:45:03 +0000</pubDate>
             <sparkle:version>0.1.5</sparkle:version>
