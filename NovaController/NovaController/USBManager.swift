@@ -14,29 +14,32 @@ import IOKit.serial
 ///
 /// 参考: https://github.com/sarakusha/novastar
 ///       https://github.com/dietervansteenwegen/Novastar_MCTRL300_basic_controller
-class USBManager: ObservableObject {
+@Observable
+class USBManager {
     static let shared = USBManager()
 
     // CP210x USB-to-UART Bridge (Silicon Labs)
-    private let vendorID: Int = 0x10C4
-    private let productID: Int = 0xEA60
+    @ObservationIgnored private let vendorID: Int = 0x10C4
+    @ObservationIgnored private let productID: Int = 0xEA60
 
-    @Published var isConnected: Bool = false
-    @Published var deviceName: String = ""
-    @Published var lastError: String? = nil
+    // UI が購読する状態 (Observation で自動追跡される)
+    var isConnected: Bool = false
+    var deviceName: String = ""
+    var lastError: String? = nil
 
-    private var serialPort: Int32 = -1
-    private var readSource: DispatchSourceRead?
-    private var serialQueue = DispatchQueue(label: "com.novacontroller.serial", qos: .userInitiated)
-    private var messageSerial: UInt16 = 0
-    private let serialLock = NSLock()
+    // 内部状態は UI 追跡対象外
+    @ObservationIgnored private var serialPort: Int32 = -1
+    @ObservationIgnored private var readSource: DispatchSourceRead?
+    @ObservationIgnored private var serialQueue = DispatchQueue(label: "com.novacontroller.serial", qos: .userInitiated)
+    @ObservationIgnored private var messageSerial: UInt16 = 0
+    @ObservationIgnored private let serialLock = NSLock()
 
     /// 応答待ちの continuation (シーケンス番号キー)
-    private var pendingReads: [UInt16: CheckedContinuation<Data?, Never>] = [:]
-    private let pendingLock = NSLock()
+    @ObservationIgnored private var pendingReads: [UInt16: CheckedContinuation<Data?, Never>] = [:]
+    @ObservationIgnored private let pendingLock = NSLock()
 
     // シリアルポート設定 (USBPcapキャプチャで確認済み)
-    private let baudRate: speed_t = 115200
+    @ObservationIgnored private let baudRate: speed_t = 115200
 
     private init() {}
 

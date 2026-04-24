@@ -8,7 +8,7 @@ struct HealthView: View {
     @State private var lastUpdate: Date? = nil
     @State private var pollTask: Task<Void, Never>? = nil
     @State private var selectedPreset: USBManager.LayoutPreset = .fourByOneLTR
-    @ObservedObject private var usbManager = USBManager.shared
+    private let usbManager = USBManager.shared
 
     private var cardCount: Int { selectedPreset.columns * selectedPreset.rows }
 

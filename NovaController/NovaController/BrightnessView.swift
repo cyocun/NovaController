@@ -18,7 +18,7 @@ struct BrightnessView: View {
         BrightnessSchedule(time: "22:00", brightness: 30),
     ]
     @State private var lastApplied: Double? = nil
-    @ObservedObject private var usbManager = USBManager.shared
+    private let usbManager = USBManager.shared
 
     var isApplied: Bool { lastApplied == brightness }
     private var brightnessInt: Int { Int(brightness.rounded()) }

@@ -11,7 +11,7 @@ struct CabinetPosition: Hashable {
 
 struct LayoutView: View {
     @State private var selectedPreset: USBManager.LayoutPreset = .fourByOneLTR
-    @ObservedObject private var usbManager = USBManager.shared
+    private let usbManager = USBManager.shared
 
     private var columns: Int { selectedPreset.columns }
     private var rows: Int { selectedPreset.rows }

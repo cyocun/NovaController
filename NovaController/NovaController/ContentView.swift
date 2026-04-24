@@ -2,7 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @State private var selectedTab: Tab = .brightness
-    @ObservedObject private var usbManager = USBManager.shared
+    private let usbManager = USBManager.shared
 
     enum Tab {
         case layout, brightness, health
@@ -94,7 +94,7 @@ struct Sidebar: View {
 // MARK: - ConnectionStatusView
 
 struct ConnectionStatusView: View {
-    @ObservedObject private var usbManager = USBManager.shared
+    private let usbManager = USBManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
