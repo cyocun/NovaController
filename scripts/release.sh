@@ -66,7 +66,7 @@ echo "$SIGN_OUTPUT"
 # sign_update の出力: `sparkle:edSignature="..." length="..."`
 ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
 ZIP_LENGTH=$(stat -f%z "$ZIP_PATH")
-PUB_DATE=$(date -u "+%a, %d %b %Y %H:%M:%S +0000")
+PUB_DATE=$(LC_TIME=C date -u "+%a, %d %b %Y %H:%M:%S +0000")   # RFC 822, Sparkle 必須の英語ロケール
 REPO_URL="https://github.com/cyocun/novaCLT4Mac"
 DOWNLOAD_URL="${REPO_URL}/releases/download/${TAG}/${ZIP_NAME}"
 
