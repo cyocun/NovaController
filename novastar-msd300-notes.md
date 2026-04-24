@@ -4,6 +4,14 @@
 - MSD300をmacOSから制御するSwiftネイティブアプリを作る
 - 機能: 輝度調整 + レイアウト設定のみ
 
+## 参考ライブラリ (裏取り用)
+本プロジェクトのリバースエンジニアリング結果は [sarakusha/novastar](https://github.com/sarakusha/novastar)
+とクロスチェック済み。同ライブラリは NovaLCT の .NET バイナリをデコンパイルして
+TypeScript に自動変換しているため、全レジスタ名・Occupancy が公式名で参照できる。
+- `packages/native/generated/AddressMapping.ts` — レジスタ一覧 (enum)
+- `packages/native/generated/api/*.ts` — 各コマンドの送信ロジック
+- 公式レジスタ名対応表は `CLAUDE.md` を参照。
+
 ## 調査結果
 
 ### デバイス情報

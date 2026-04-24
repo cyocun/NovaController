@@ -2,6 +2,8 @@
 
 ## プロジェクト概要
 NovaStar MSD300 LEDコントローラーをmacOSから操作するSwiftUIネイティブアプリ。
+MSD300 専用。将来の他機種対応は未定だが、`ReadControllerModelId` (addr=2, 2B)
+で厳密に機種判別する余地は残してある。
 
 ## 技術スタック
 - Swift / SwiftUI
@@ -44,6 +46,36 @@ xcodebuild -project NovaController/NovaController.xcodeproj -scheme NovaControll
 - **パケット**: `55 AA` ヘッダー + 2B シーケンス番号 + レジスタR/W
 - **チェックサム**: `0x5555 + sum(payload)` のLE16格納
 - **詳細**: `novastar-msd300-notes.md` 参照
+
+## 参考ライブラリ
+- **[sarakusha/novastar](https://github.com/sarakusha/novastar)** (TypeScript, MIT)
+  - NovaLCT の .NET バイナリをデコンパイルして自動生成した包括的な API ラッパー
+  - `packages/native/generated/AddressMapping.ts` に全レジスタ名・アドレス・Occupancy が列挙されている
+  - 新機能を足すときはキャプチャを取る前にまずここを引くと時短
+  - Wireshark dissector (`wireshark/novastar.lua`) も同梱、本プロジェクトの `tools/wireshark/` と併用可
+
+## レジスタ名対応表 (キャプチャ ↔ 公式 = sarakusha/novastar)
+| アドレス | 用途 | 公式 AddressMapping 名 |
+|---|---|---|
+| `0x02000001` | 全体輝度 (1B) | `GlobalBrightnessAddr` |
+| `0x020001E3` | R/G/B/V 輝度 (4B) | `FourSystemAdaptiveBrightnessAddr` |
+| `0x02000017` | キャビネット幅 (受信カード側) | `ControlWidthAddr` |
+| `0x02000019` | キャビネット高さ (受信カード側) | `ControlHeightAddr` |
+| `0x02000024/26` | Area1 幅/高さ (送信カード側) | `DviWidthAddr` / `DviHeightAddr` |
+| `0x02000028/2A` | Area1 オフセット X/Y | `DviOffsetXAddr` / `DviOffsetYAddr` |
+| `0x0200002C` | Area1 stride | `RealDviWidthAddr` |
+| `0x02000050` | Area3 ポート有効 | `PortEnableAddr` |
+| `0x02000051/53` | Area3 ポート幅/高さ | `PortWidthAddr` / `PortHeightAddr` |
+| `0x02000055/57` | Area3 ポート X/Y | `PortOffsetXAddr` / `PortOffsetYAddr` |
+| `0x020000F0` | 仮想マップ (1B) | `VirtualMapAddrNew` |
+| `0x020001EC` | 画面全体サイズ (4B) | `SenderVideoEnclosingAddr` |
+| `0x02020020` | マッピング前アロケート (64B) | `SenderFunctionAddr` |
+| `0x03000000` | マッピングテーブル base | `Sender_scannerCoordinateBase` / `EthernetPortScannerXAddr` |
+| `0x03100000` | カード数 (cols × rows) | `Sender_NetworkInterfaceCardNumber` |
+| `0x01000012` | パラメータ再計算コマンド `[0xAA]` | `RecaculateParameterAddr` ← **「設定確定」だった** |
+| `0x01000088` | スキャンマッピング系 | `ScannerMappingAddr` |
+
+マッピングテーブル: 4B/エントリ `[X_LE16][Y_LE16]`、1 ポート分 = `EthernetPortOccupancy = 0x1000` = 1024 エントリ。256B×16 ブロックで書き込むのは実装都合。
 
 ## 実装状況
 - [x] UIレイアウト（サイドバー+コンテンツ）
