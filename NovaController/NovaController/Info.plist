@@ -33,7 +33,7 @@
 
 	<!-- Sparkle autoupdate settings -->
 	<key>SUFeedURL</key>
-	<string>https://cyocun.github.io/novaCLT4Mac/appcast.xml</string>
+	<string>https://cyocun.github.io/NovaController/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>kUdjCNJ5scOVYJlXAsMMs7GfY7IYoHoqX8/fN6T0nK0=</string>
 	<key>SUEnableAutomaticChecks</key>

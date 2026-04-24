@@ -27,7 +27,7 @@ $SPARKLE_BIN/generate_keys
 
 ### 3. SUFeedURL を実サイトに合わせる
 
-デフォルトは `https://cyocun.github.io/novaCLT4Mac/appcast.xml` を前提にしている。
+デフォルトは `https://cyocun.github.io/NovaController/appcast.xml` を前提にしている。
 GitHub Pages を有効化していない場合は設定する:
 
 - GitHub リポジトリの Settings → Pages

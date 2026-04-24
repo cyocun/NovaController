@@ -114,7 +114,7 @@ echo "$SIGN_OUTPUT"
 ED_SIGNATURE=$(echo "$SIGN_OUTPUT" | sed -n 's/.*sparkle:edSignature="\([^"]*\)".*/\1/p')
 ZIP_LENGTH=$(stat -f%z "$ZIP_PATH")
 PUB_DATE=$(LC_ALL=C date -u "+%a, %d %b %Y %H:%M:%S +0000")   # RFC 822, LC_ALL で LC_TIME を確実に上書き
-REPO_URL="https://github.com/cyocun/novaCLT4Mac"
+REPO_URL="https://github.com/cyocun/NovaController"
 DOWNLOAD_URL="${REPO_URL}/releases/download/${TAG}/${ZIP_NAME}"
 
 echo "==> Creating GitHub release $TAG"

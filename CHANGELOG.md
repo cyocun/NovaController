@@ -3,6 +3,22 @@
 本ファイルに各リリースの変更点を記録する。
 バージョン番号は [Semantic Versioning](https://semver.org/) に準拠。
 
+## [0.1.5] - 2026-04-24
+
+### Changed
+- UI テキストを英語をメインに変更 (sidebar / buttons / labels / menus /
+  error messages / notifications)。日本語ローカライズは今後 String Catalog で
+  対応する余地を残す。
+- README を英語メインに。日本語版は `README.ja.md` に移動。
+
+### Infrastructure
+- GitHub リポジトリを `novaCLT4Mac` → `NovaController` に rename。
+  プロジェクト名と揃えた。
+- Sparkle SUFeedURL を新 Pages URL
+  (`https://cyocun.github.io/NovaController/appcast.xml`) に更新。
+- **旧 URL は 404 になるため、v0.1.4 以前のユーザーは自動アップデートを
+  受け取れません。v0.1.5 以降は手動で zip をダウンロードして置き換えてください。**
+
 ## [0.1.4] - 2026-04-24
 
 ### その他
