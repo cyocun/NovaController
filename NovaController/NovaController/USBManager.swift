@@ -46,10 +46,17 @@ class USBManager {
     // MARK: - レジスタアドレス (キャプチャにより確認済み)
 
     /// MSD300 レジスタマップ
+    ///
+    /// アドレスはキャプチャで確認済み。命名は sarakusha/novastar
+    /// (NovaLCT の .NET バイナリをデコンパイルした TypeScript ライブラリ) の
+    /// 公式 AddressMapping と突き合わせて確定。
     enum Register {
-        /// 全体輝度 (0x00〜0xFF) — キャプチャで確認済み
+        /// 全体輝度 (0x00〜0xFF) 1バイト
+        /// 公式名: `GlobalBrightnessAddr`
         static let globalBrightness: UInt32 = 0x02000001
-        /// RGB個別輝度 (4バイト: R, G, B, 0x00) — キャプチャ確認: 輝度変更時 F0,F0,F0,00
+        /// RGB+V 個別輝度 4バイト (R, G, B, V=0x00)
+        /// 公式名: `FourSystemAdaptiveBrightnessAddr`
+        /// 輝度変更時のキャプチャでは F0,F0,F0,00 を観測
         static let rgbBrightness: UInt32 = 0x020001E3
         /// テストパターン
         static let testPattern: UInt32 = 0x02000101
@@ -57,7 +64,8 @@ class USBManager {
         static let screenWidth: UInt32 = 0x02000002
         /// 画面高さ（ピクセル単位）
         static let screenHeight: UInt32 = 0x02000003
-        /// スキャン方向 — layout3.pcapで確認
+        /// スキャン方向関連 (layout3.pcapで確認)
+        /// 公式名: `ScannerMappingAddr` (受信カード側)
         static let scanDirection: UInt32 = 0x01000088
     }
 
@@ -75,6 +83,8 @@ class USBManager {
         /// 送信先: 受信カード (レイアウト設定で使用)
         static let destReceivingCard: UInt8 = 0xFF
         /// デバイスタイプ: 受信カード
+        /// 注: sarakusha/novastar の DeviceTypeEnum は {Sender=1, Scanner=2, All=3} と定義しているが、
+        /// MSD300 実機のキャプチャでは 0x00/0x01/0xFF を観測。Swift 側はキャプチャ準拠の値を使用する。
         static let deviceTypeReceivingCard: UInt8 = 0x01
         /// 全ポート指定
         static let portAll: UInt8 = 0xFF
@@ -535,27 +545,31 @@ class USBManager {
             self.sendCmd(dest: 0xFF, port: 0x00, board: 0x0000, reg: 0x02000019, data: [0x00])
 
             // === Section 2: グローバル設定 (dest=0x00 送信カード) ===
-            self.sendCmd(dest: 0x00, reg: 0x020000F0, data: [0x00])
-            self.sendCmd(dest: 0x00, reg: 0x02000028, data: [0x00, 0x00])  // offset X area1
-            self.sendCmd(dest: 0x00, reg: 0x0200002A, data: [0x00, 0x00])  // offset Y area1
-            self.sendCmd(dest: 0x00, reg: 0x02000024, data: widthLE)       // width area1
-            self.sendCmd(dest: 0x00, reg: 0x02000026, data: heightLE)      // height area1
-            self.sendCmd(dest: 0x00, reg: 0x0200002C, data: widthLE)       // stride area1
-            self.sendCmd(dest: 0x00, reg: 0x02000055, data: [0x00, 0x00])  // offset X area3
-            self.sendCmd(dest: 0x00, reg: 0x02000057, data: [0x00, 0x00])  // offset Y area3
-            self.sendCmd(dest: 0x00, reg: 0x02000051, data: widthLE)       // width area3
-            self.sendCmd(dest: 0x00, reg: 0x02000053, data: heightLE)      // height area3
-            self.sendCmd(dest: 0x00, reg: 0x03100000, data: self.uint16LE(UInt16(totalCards)))  // card count
-            self.sendCmd(dest: 0x00, reg: 0x02000050, data: [0x00])
+            // 公式名は sarakusha/novastar の AddressMapping より判明
+            self.sendCmd(dest: 0x00, reg: 0x020000F0, data: [0x00])         // VirtualMapAddrNew (1B)
+            self.sendCmd(dest: 0x00, reg: 0x02000028, data: [0x00, 0x00])   // DviOffsetXAddr (area1 X)
+            self.sendCmd(dest: 0x00, reg: 0x0200002A, data: [0x00, 0x00])   // DviOffsetYAddr (area1 Y)
+            self.sendCmd(dest: 0x00, reg: 0x02000024, data: widthLE)        // DviWidthAddr (area1 W)
+            self.sendCmd(dest: 0x00, reg: 0x02000026, data: heightLE)       // DviHeightAddr (area1 H)
+            self.sendCmd(dest: 0x00, reg: 0x0200002C, data: widthLE)        // RealDviWidthAddr (stride)
+            self.sendCmd(dest: 0x00, reg: 0x02000055, data: [0x00, 0x00])   // PortOffsetXAddr (area3)
+            self.sendCmd(dest: 0x00, reg: 0x02000057, data: [0x00, 0x00])   // PortOffsetYAddr (area3)
+            self.sendCmd(dest: 0x00, reg: 0x02000051, data: widthLE)        // PortWidthAddr (area3)
+            self.sendCmd(dest: 0x00, reg: 0x02000053, data: heightLE)       // PortHeightAddr (area3)
+            self.sendCmd(dest: 0x00, reg: 0x03100000, data: self.uint16LE(UInt16(totalCards)))  // Sender_NetworkInterfaceCardNumber (cols × rows)
+            self.sendCmd(dest: 0x00, reg: 0x02000050, data: [0x00])         // PortEnableAddr
 
             // === Section 2.5: マッピングテーブル直前の特殊コマンド (キャプチャ line 21) ===
-            // reg=0x02020020, dir=write, len=0x0040, data=empty の変則パケット。
-            // NovaLCT がマッピング書き込み前に必ず送っているため再現する。
+            // reg=0x02020020 は公式名 SenderFunctionAddr (Occupancy=0x40)。
+            // NovaLCT が 64 バイト分の領域を先にアロケート/リセットするため必ず送る。
             self.sendCmd(dest: 0x00, port: 0x00, board: 0x0000,
                          reg: 0x02020020, data: [],
                          lengthOverride: 0x0040)
 
             // === Section 3: マッピングテーブル (16ブロック) ===
+            // ベース 0x03000000 = Sender_scannerCoordinateBase (= EthernetPortScannerXAddr)
+            // 4B/エントリ [X_LE16][Y_LE16]、1 ポート分 = 4096B = 1024 エントリ
+            // 256B×16 ブロックで書き込み
             let mappingBlock = self.buildMappingBlock(
                 columns: columns, rows: rows,
                 cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
@@ -575,20 +589,24 @@ class USBManager {
             self.sendCmd(dest: 0x00, port: 0x00, board: 0xFFFF, reg: 0x0200009A, data: [0x00], deviceType: rcvType)
 
             // 各カードのサイズを設定
+            // 0x02000017/19 は送信カード側では別定義 (IsHasDVISignal) だが、
+            // 受信カード (deviceType=0x01) 宛てでは ControlWidthAddr / ControlHeightAddr として機能する。
             let order = self.boardOrder(columns: columns, rows: rows,
                                         cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
                                         scanDirection: scanDirection)
             for boardIndex in order {
                 let wLE = self.uint16LE(UInt16(cabinetWidth))
                 let hLE = self.uint16LE(UInt16(cabinetHeight))
-                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000017, data: wLE, deviceType: rcvType)
-                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000019, data: hLE, deviceType: rcvType)
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000017, data: wLE, deviceType: rcvType)  // ControlWidth
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000019, data: hLE, deviceType: rcvType)  // ControlHeight
             }
 
             // === Section 5: コミット (キャプチャ検証済み) ===
+            // 0x01000012 = RecaculateParameterAddr — data [0xAA] で設定を確定/再計算させる
+            // 0x020001EC = SenderVideoEnclosingAddr — 画面全体サイズを通知
             self.sendCmd(dest: 0xFF, port: 0x00, board: 0x0000, reg: 0x020000AE, data: [0x01])
-            self.sendCmd(dest: 0xFF, port: 0xFF, board: 0xFFFF, reg: 0x01000012, data: [0xAA], reserved: 0x08)
-            self.sendCmd(dest: 0x00, reg: 0x020001EC, data: self.uint16LE(UInt16(totalWidth)) + self.uint16LE(UInt16(totalHeight)))
+            self.sendCmd(dest: 0xFF, port: 0xFF, board: 0xFFFF, reg: 0x01000012, data: [0xAA], reserved: 0x08)  // RecaculateParameter
+            self.sendCmd(dest: 0x00, reg: 0x020001EC, data: self.uint16LE(UInt16(totalWidth)) + self.uint16LE(UInt16(totalHeight)))  // SenderVideoEnclosing
 
             print("[USBManager] Layout applied: \(totalWidth)x\(totalHeight)px")
         }
