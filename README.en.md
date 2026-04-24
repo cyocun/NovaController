@@ -5,6 +5,7 @@
 A native macOS (SwiftUI) application for controlling the NovaStar **MSD300**
 LED processor. Built to replace the Windows-only official tool **NovaLCT** on
 macOS, via USB-UART communication reverse-engineered from USBPcap captures.
+MSD300-only by design.
 
 ## Features
 
