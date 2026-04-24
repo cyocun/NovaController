@@ -8,5 +8,8 @@
 	<true/>
 	<key>com.apple.security.device.serial</key>
 	<true/>
+	<!-- Sparkle: アップデートチェック / ダウンロードに必要 -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

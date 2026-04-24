@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <channel>
+        <title>NovaController</title>
+        <description>NovaStar MSD300 macOS controller updates</description>
+        <language>ja</language>
+        <link>https://github.com/cyocun/novaCLT4Mac</link>
+
+        <!--
+            リリース毎に <item> を追加する。
+            scripts/release.sh の実行後に出力される <item> をここに貼る。
+            Version 番号は降順 (新しいものが上) で並べる。
+        -->
+
+    </channel>
+</rss>

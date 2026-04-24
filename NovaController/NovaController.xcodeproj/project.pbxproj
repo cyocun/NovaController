@@ -15,6 +15,7 @@
 		A10006 /* USBManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20006 /* USBManager.swift */; };
 		A10007 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20007 /* Assets.xcassets */; };
 		A10008 /* HealthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20008 /* HealthView.swift */; };
+		B10001 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = B30001 /* Sparkle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -34,6 +35,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B10001 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -87,6 +89,9 @@
 			dependencies = (
 			);
 			name = NovaController;
+			packageProductDependencies = (
+				B30001 /* Sparkle */,
+			);
 			productName = NovaController;
 			productReference = A30001 /* NovaController.app */;
 			productType = "com.apple.product-type.application";
@@ -115,6 +120,9 @@
 				Base,
 			);
 			mainGroup = A50001;
+			packageReferences = (
+				B20001 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
 			productRefGroup = A50003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -280,10 +288,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainStoryboardFile = "";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaController/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -307,10 +313,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMainStoryboardFile = "";
-				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = NovaController/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -345,6 +349,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B20001 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B30001 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B20001 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+/* End XCSwiftPackageProductDependency section */
 
 	};
 	rootObject = AB0001 /* Project object */;
