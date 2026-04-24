@@ -56,8 +56,10 @@ class USBManager: ObservableObject {
     // MARK: - パケット構造定数 (キャプチャにより確認済み)
 
     private enum Packet {
+        /// 送信パケット (PC→device) の先頭2バイト
         static let headerWrite: [UInt8] = [0x55, 0xAA]
-        static let headerRead: [UInt8] = [0xAA, 0x55]
+        /// 受信パケット (device→PC) の先頭2バイト
+        static let headerResponse: [UInt8] = [0xAA, 0x55]
         /// 送信元: PC
         static let sourcePC: UInt8 = 0xFE
         /// 送信先: 送信カード (MSD300本体)
@@ -73,16 +75,51 @@ class USBManager: ObservableObject {
         static let dirWrite: UInt8 = 0x01
     }
 
-    // MARK: - スキャン方向
+    // MARK: - レイアウトプリセット
 
-    /// レイアウトのスキャン方向
-    enum ScanDirection: String, CaseIterable, Identifiable {
-        case leftToRight = "左→右"
-        case rightToLeft = "右→左"
-        case topToBottom = "上→下"
-        case serpentine = "S字"
+    /// キャプチャ検証済みのレイアウトパターン
+    ///
+    /// NovaLCT で実機キャプチャした 3 パターンを固定 preset として提供する。
+    /// 他のパターンが必要になった場合は再キャプチャして case を追加する。
+    enum LayoutPreset: String, CaseIterable, Identifiable {
+        case fourByOneLTR = "4×1 左→右"
+        case fourByOneRTL = "4×1 右→左"
+        case twoByFourSerpentine = "2×4 S字"
 
         var id: String { rawValue }
+
+        var columns: Int {
+            switch self {
+            case .fourByOneLTR, .fourByOneRTL: return 4
+            case .twoByFourSerpentine: return 2
+            }
+        }
+
+        var rows: Int {
+            switch self {
+            case .fourByOneLTR, .fourByOneRTL: return 1
+            case .twoByFourSerpentine: return 4
+            }
+        }
+
+        /// キャプチャ検証済みのキャビネット寸法 (128×128 固定)
+        var cabinetWidth: Int { 128 }
+        var cabinetHeight: Int { 128 }
+
+        var scanDirection: ScanDirection {
+            switch self {
+            case .fourByOneLTR: return .leftToRight
+            case .fourByOneRTL: return .rightToLeft
+            case .twoByFourSerpentine: return .serpentine
+            }
+        }
+    }
+
+    /// プリセット内部のスキャン方向（外部公開はせず LayoutPreset 経由で指定）
+    enum ScanDirection {
+        case leftToRight
+        case rightToLeft
+        case serpentine
     }
 
 
@@ -163,7 +200,7 @@ class USBManager: ObservableObject {
         // ブロッキングモードに設定
         var flags = fcntl(fd, F_GETFL)
         flags &= ~O_NONBLOCK
-        fcntl(fd, F_SETFL, flags)
+        _ = fcntl(fd, F_SETFL, flags)
 
         // 排他アクセス
         if ioctl(fd, TIOCEXCL) == -1 {
@@ -257,14 +294,18 @@ class USBManager: ObservableObject {
         dest: UInt8 = Packet.destSendingCard,
         port: UInt8 = Packet.portAll,
         boardIndex: UInt16 = 0xFFFF,
-        reserved: UInt8 = 0x00
+        reserved: UInt8 = 0x00,
+        deviceType: UInt8? = nil,
+        lengthOverride: UInt16? = nil
     ) -> Data {
         let serial = nextSerial()
-        let dataLength = UInt16(isWrite ? data.count : 0)
+        // lengthOverride は「data は空だが len フィールドは非0」のような読み取り要求用
+        let dataLength = lengthOverride ?? UInt16(isWrite ? data.count : 0)
 
-        // デバイスタイプ: board=0x0000は送信カード(0x00)、それ以外は受信カード(0x01)
-        // キャプチャ検証済み: brightness(board=FFFF)→0x01, global(board=0000)→0x00
-        let deviceType: UInt8 = (boardIndex == 0x0000) ? 0x00 : Packet.deviceTypeReceivingCard
+        // デバイスタイプ: 明示指定がなければ board=0x0000→0x00、それ以外→0x01
+        // パーカード設定(Section 4)ではboard=0x0000でも0x01が必要なため、明示指定で対応
+        // キャプチャ検証済み: L→R board=0のパーカード設定で deviceType=0x01 を確認
+        let devType: UInt8 = deviceType ?? ((boardIndex == 0x0000) ? 0x00 : Packet.deviceTypeReceivingCard)
 
         var packet: [UInt8] = []
 
@@ -281,15 +322,16 @@ class USBManager: ObservableObject {
         // 送信先: 0x00=送信カード(MSD300), 0xFF=受信カード
         packet.append(dest)
 
-        // デバイスタイプ: 0x00=送信カード, 0x01=受信カード (board値で自動判定)
-        packet.append(deviceType)
+        // デバイスタイプ: 0x00=送信カード, 0x01=受信カード
+        packet.append(devType)
 
         // ポートアドレス
         packet.append(port)
 
-        // ボードインデックス (2 bytes)
-        packet.append(UInt8((boardIndex >> 8) & 0xFF))
+        // ボードインデックス (2 bytes, little-endian)
+        // キャプチャ検証: board=3 → 03 00 (LE)
         packet.append(UInt8(boardIndex & 0xFF))
+        packet.append(UInt8((boardIndex >> 8) & 0xFF))
 
         // I/O方向
         packet.append(isWrite ? Packet.dirWrite : Packet.dirRead)
@@ -336,20 +378,36 @@ class USBManager: ObservableObject {
     }
 
     /// レスポンスを処理
+    ///
+    /// 応答フォーマット (キャプチャ確認済み, 20バイト以上):
+    /// `AA 55 [seq_hi seq_lo] 00 FE [devtype] [port] [board_lo board_hi]`
+    /// `[dir] [reserved] [reg LE 4B] [len LE 2B] [data...] [chk_lo chk_hi]`
     private func handleResponse(_ data: Data) {
         guard data.count >= 2 else { return }
-
         let bytes = [UInt8](data)
 
-        // 応答: AA 55 で開始 (キャプチャ確認済み)
-        if bytes[0] == 0xAA && bytes[1] == 0x55 {
-            if data.count >= 4 {
-                let seqHi = bytes[2]
-                let seqLo = bytes[3]
-                print("[USBManager] Response OK (seq: 0x\(String(format: "%02X%02X", seqHi, seqLo)))")
-            }
-        } else {
+        // 応答ヘッダ (AA 55) 以外は不明データとしてログのみ
+        guard bytes[0] == Packet.headerResponse[0], bytes[1] == Packet.headerResponse[1] else {
             print("[USBManager] Unexpected data: \(bytes.prefix(10).map { String(format: "%02X", $0) }.joined(separator: " "))")
+            return
+        }
+
+        guard bytes.count >= 20 else {
+            print("[USBManager] Response (short, \(bytes.count)B)")
+            return
+        }
+
+        let seq = (UInt16(bytes[2]) << 8) | UInt16(bytes[3])
+        let reg = UInt32(bytes[12]) | (UInt32(bytes[13]) << 8) | (UInt32(bytes[14]) << 16) | (UInt32(bytes[15]) << 24)
+        let len = Int(bytes[16]) | (Int(bytes[17]) << 8)
+        let payloadEnd = min(18 + len, bytes.count - 2)
+        let payload = Array(bytes[18..<payloadEnd])
+
+        if reg == Register.globalBrightness, let raw = payload.first {
+            let percent = Int((Double(raw) / 255.0 * 100.0).rounded())
+            print("[USBManager] Brightness response: 0x\(String(format: "%02X", raw)) (\(percent)%) seq=0x\(String(format: "%04X", seq))")
+        } else {
+            print("[USBManager] Response reg=0x\(String(format: "%08X", reg)) len=\(len) seq=0x\(String(format: "%04X", seq))")
         }
     }
 
@@ -414,40 +472,29 @@ class USBManager: ObservableObject {
 
     // MARK: - 公開API: 受信カードリセット
 
-    /// 受信カードをリセットして既定のレイアウトを再適用する
-    ///
-    /// 不正なレイアウト設定でキャビネットが映らなくなった場合の復旧用。
-    /// 4×1 左→右の既定レイアウトを送信して受信カードの設定を上書きする。
-    func resetReceivingCards(columns: Int = 4, rows: Int = 1,
-                             cabinetWidth: Int = 128, cabinetHeight: Int = 128) {
-        let allEnabled: Set<CabinetPosition> = {
-            var set = Set<CabinetPosition>()
-            for r in 0..<rows {
-                for c in 0..<columns {
-                    set.insert(CabinetPosition(row: r, col: c))
-                }
-            }
-            return set
-        }()
-
-        print("[USBManager] Resetting receiving cards with \(columns)x\(rows) L→R layout")
-        setLayout(columns: columns, rows: rows,
-                  cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
-                  scanDirection: .leftToRight, enabled: allEnabled)
+    /// 受信カードを 4×1 左→右プリセットで再適用する (不調時の復旧用)
+    func resetReceivingCards() {
+        print("[USBManager] Resetting receiving cards with 4×1 L→R preset")
+        setLayout(preset: .fourByOneLTR)
     }
 
     // MARK: - 公開API: レイアウト設定
 
-    /// レイアウト設定のフルシーケンスを動的に生成して送信する
+    /// プリセットに基づきレイアウト設定のフルシーケンスを送信する
     ///
-    /// キャプチャ解析により判明したコマンドシーケンス:
+    /// キャプチャ検証済みの 3 パターンのみ対応。シーケンスは以下:
     /// 1. 初期化 (2 cmd): 受信カード初期化
     /// 2. グローバル設定 (12 cmd): 画面サイズ、カード数等
-    /// 3. マッピングテーブル (16 cmd): 16ブロック×256バイト、カード→ピクセル座標マッピング
+    /// 2.5. マッピング直前の特殊コマンド (1 cmd): reg=0x02020020
+    /// 3. マッピングテーブル (16 cmd): 16ブロック×256バイト
     /// 4. パーカード設定 (1 + cards×2 cmd): 各受信カードのサイズ設定
     /// 5. コミット (3 cmd): 設定適用
-    func setLayout(columns: Int, rows: Int, cabinetWidth: Int, cabinetHeight: Int,
-                   scanDirection: ScanDirection, enabled: Set<CabinetPosition>) {
+    func setLayout(preset: LayoutPreset) {
+        let columns = preset.columns
+        let rows = preset.rows
+        let cabinetWidth = preset.cabinetWidth
+        let cabinetHeight = preset.cabinetHeight
+        let scanDirection = preset.scanDirection
         let totalWidth = columns * cabinetWidth
         let totalHeight = rows * cabinetHeight
         let totalCards = columns * rows
@@ -458,7 +505,7 @@ class USBManager: ObservableObject {
                 return
             }
 
-            print("[USBManager] setLayout: \(columns)x\(rows) = \(totalWidth)x\(totalHeight)px, dir=\(scanDirection.rawValue), \(enabled.count)/\(totalCards) enabled")
+            print("[USBManager] setLayout: preset=\(preset.rawValue) (\(columns)x\(rows) = \(totalWidth)x\(totalHeight)px)")
 
             let widthLE = self.uint16LE(UInt16(totalWidth))
             let heightLE = self.uint16LE(UInt16(totalHeight))
@@ -481,6 +528,13 @@ class USBManager: ObservableObject {
             self.sendCmd(dest: 0x00, reg: 0x03100000, data: self.uint16LE(UInt16(totalCards)))  // card count
             self.sendCmd(dest: 0x00, reg: 0x02000050, data: [0x00])
 
+            // === Section 2.5: マッピングテーブル直前の特殊コマンド (キャプチャ line 21) ===
+            // reg=0x02020020, dir=write, len=0x0040, data=empty の変則パケット。
+            // NovaLCT がマッピング書き込み前に必ず送っているため再現する。
+            self.sendCmd(dest: 0x00, port: 0x00, board: 0x0000,
+                         reg: 0x02020020, data: [],
+                         lengthOverride: 0x0040)
+
             // === Section 3: マッピングテーブル (16ブロック) ===
             let mappingBlock = self.buildMappingBlock(
                 columns: columns, rows: rows,
@@ -493,17 +547,22 @@ class USBManager: ObservableObject {
             }
 
             // === Section 4: パーカード設定 ===
+            // パーカード設定は全て deviceType=0x01 (受信カード) — キャプチャで確認済み
+            // board=0x0000 のカードでも deviceType=0x01 であることに注意
+            let rcvType = Packet.deviceTypeReceivingCard
+
             // 全ボードリセット
-            self.sendCmd(dest: 0x00, port: 0x00, board: 0xFFFF, reg: 0x0200009A, data: [0x00])
+            self.sendCmd(dest: 0x00, port: 0x00, board: 0xFFFF, reg: 0x0200009A, data: [0x00], deviceType: rcvType)
 
             // 各カードのサイズを設定
             let order = self.boardOrder(columns: columns, rows: rows,
-                                        scanDirection: scanDirection, enabled: enabled)
+                                        cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
+                                        scanDirection: scanDirection)
             for boardIndex in order {
                 let wLE = self.uint16LE(UInt16(cabinetWidth))
                 let hLE = self.uint16LE(UInt16(cabinetHeight))
-                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000017, data: wLE)
-                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000019, data: hLE)
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000017, data: wLE, deviceType: rcvType)
+                self.sendCmd(dest: 0x00, port: 0x00, board: UInt16(boardIndex), reg: 0x02000019, data: hLE, deviceType: rcvType)
             }
 
             // === Section 5: コミット (キャプチャ検証済み) ===
@@ -536,7 +595,10 @@ class USBManager: ObservableObject {
             pattern.append(contentsOf: uint16LE(UInt16(y)))
         }
 
-        // パターンを繰り返して256バイトに充填
+        // パターンを繰り返して256バイトに充填 (空パターン時は 0 埋めにフォールバック)
+        guard !pattern.isEmpty else {
+            return Array(repeating: 0x00, count: 256)
+        }
         var block = [UInt8]()
         while block.count < 256 {
             block.append(contentsOf: pattern)
@@ -568,13 +630,6 @@ class USBManager: ObservableObject {
                 let row = i / columns
                 coords.append(((columns - 1 - col) * cabinetWidth, row * cabinetHeight))
             }
-        case .topToBottom:
-            // ボード0が左上、上→下に進み、次の列へ
-            for i in 0..<totalCards {
-                let col = i / rows
-                let row = i % rows
-                coords.append((col * cabinetWidth, row * cabinetHeight))
-            }
         case .serpentine:
             // S字パターン: 偶数列は下→上、奇数列は上→下 (キャプチャで確認)
             for col in 0..<columns {
@@ -593,52 +648,35 @@ class USBManager: ObservableObject {
         return coords
     }
 
-    /// スキャン方向に基づくボード送信順序を返す
+    /// パーカード設定の送信順序を返す
     ///
-    /// マッピングテーブルのエントリ順と一致する必要がある
-    private func boardOrder(columns: Int, rows: Int, scanDirection: ScanDirection,
-                            enabled: Set<CabinetPosition>) -> [Int] {
-        let totalCards = columns * rows
+    /// cardCoordinates が出力する (x, y) を画面上の col-major 走査順で並べ替え、
+    /// 該当する board index を返す。キャプチャ実測の送信順に完全一致する:
+    /// - 4×1 L→R: [0, 1, 2, 3]
+    /// - 4×1 R→L: [3, 2, 1, 0]
+    /// - 2×4 S字: [3, 2, 1, 0, 4, 5, 6, 7]
+    private func boardOrder(columns: Int, rows: Int,
+                            cabinetWidth: Int, cabinetHeight: Int,
+                            scanDirection: ScanDirection) -> [Int] {
+        let coords = cardCoordinates(columns: columns, rows: rows,
+                                     cabinetWidth: cabinetWidth, cabinetHeight: cabinetHeight,
+                                     scanDirection: scanDirection)
+        // (col, row) key → board index
+        var boardByPos = [Int: Int]()
+        for (i, c) in coords.enumerated() {
+            let col = c.x / cabinetWidth
+            let row = c.y / cabinetHeight
+            boardByPos[row * columns + col] = i
+        }
         var order = [Int]()
-
-        switch scanDirection {
-        case .leftToRight:
-            for i in 0..<totalCards { order.append(i) }
-        case .rightToLeft:
-            // 行内で逆順: 各行の右端から左端へ
+        for col in 0..<columns {
             for row in 0..<rows {
-                for col in stride(from: columns - 1, through: 0, by: -1) {
-                    order.append(row * columns + col)
-                }
-            }
-        case .topToBottom:
-            // 列内を上→下: 各列を縦に走査
-            for col in 0..<columns {
-                for row in 0..<rows {
-                    order.append(row * columns + col)
-                }
-            }
-        case .serpentine:
-            // S字パターン: 偶数列は下→上、奇数列は上→下
-            for col in 0..<columns {
-                if col % 2 == 0 {
-                    for row in stride(from: rows - 1, through: 0, by: -1) {
-                        order.append(row * columns + col)
-                    }
-                } else {
-                    for row in 0..<rows {
-                        order.append(row * columns + col)
-                    }
+                if let b = boardByPos[row * columns + col] {
+                    order.append(b)
                 }
             }
         }
-
-        // 有効なカードのみフィルタ
-        return order.filter { idx in
-            let row = idx / columns
-            let col = idx % columns
-            return enabled.contains(CabinetPosition(row: row, col: col))
-        }
+        return order
     }
 
     /// UInt16をリトルエンディアンのバイト配列に変換
@@ -647,8 +685,8 @@ class USBManager: ObservableObject {
     }
 
     /// 1コマンドを構築して送信する (コマンド間5ms待機付き)
-    private func sendCmd(dest: UInt8 = 0x00, port: UInt8 = 0x00, board: UInt16 = 0x0000, reg: UInt32, data: [UInt8], reserved: UInt8 = 0x00) {
-        let packet = buildPacket(isWrite: true, register: reg, data: data, dest: dest, port: port, boardIndex: board, reserved: reserved)
+    private func sendCmd(dest: UInt8 = 0x00, port: UInt8 = 0x00, board: UInt16 = 0x0000, reg: UInt32, data: [UInt8], reserved: UInt8 = 0x00, deviceType: UInt8? = nil, lengthOverride: UInt16? = nil, isWrite: Bool = true) {
+        let packet = buildPacket(isWrite: isWrite, register: reg, data: data, dest: dest, port: port, boardIndex: board, reserved: reserved, deviceType: deviceType, lengthOverride: lengthOverride)
         let bytes = [UInt8](packet)
         let written = write(self.serialPort, bytes, bytes.count)
         if written < 0 {

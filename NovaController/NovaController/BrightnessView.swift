@@ -12,99 +12,81 @@ struct BrightnessSchedule: Identifiable {
 
 struct BrightnessView: View {
     @State private var brightness: Double = 80
-    @State private var autoMode: Bool = false
     @State private var scheduleEnabled: Bool = false
     @State private var schedules: [BrightnessSchedule] = [
         BrightnessSchedule(time: "08:00", brightness: 80),
         BrightnessSchedule(time: "22:00", brightness: 30),
     ]
     @State private var lastApplied: Double? = nil
+    @ObservedObject private var usbManager = USBManager.shared
 
-    var isApplied: Bool {
-        lastApplied == brightness
-    }
+    var isApplied: Bool { lastApplied == brightness }
+    private var brightnessInt: Int { Int(brightness.rounded()) }
 
     var body: some View {
         HStack(spacing: 0) {
             // 左メインエリア
-            VStack(alignment: .leading, spacing: 28) {
-                // ヘッダー
+            VStack(alignment: .leading, spacing: 24) {
                 Text("輝度調整")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundColor(Color(hex: "#2d3436"))
 
-                // 円弧メーター + スライダーカード
-                VStack(spacing: 20) {
-                    // 円弧メーター
-                    BrightnessGaugeView(brightness: brightness)
-                        .frame(width: 180, height: 180)
+                // メーター + 微調整 (フラット)
+                VStack(spacing: 32) {
+                    HStack(spacing: 28) {
+                        AdjustButton(symbol: "minus") {
+                            brightness = max(0, brightness - 1)
+                        }
 
-                    // スライダー
-                    HStack(spacing: 12) {
-                        Image(systemName: "sun.min")
-                            .foregroundColor(.secondary)
-                        Slider(value: $brightness, in: 0...100, step: 1)
-                            .disabled(autoMode)
-                            .opacity(autoMode ? 0.4 : 1.0)
-                        Image(systemName: "sun.max.fill")
-                            .foregroundColor(Color(hex: "#f39c12"))
+                        BrightnessGaugeView(brightness: $brightness)
+                            .frame(width: 240, height: 240)
+
+                        AdjustButton(symbol: "plus") {
+                            brightness = min(100, brightness + 1)
+                        }
                     }
-                    .padding(.horizontal, 20)
 
-                    // プリセットボタン
-                    HStack(spacing: 8) {
-                        ForEach([25, 50, 75, 100], id: \.self) { preset in
+                    // プリセット (フラット)
+                    HStack(spacing: 6) {
+                        ForEach([0, 25, 50, 75, 100], id: \.self) { preset in
                             Button(action: { brightness = Double(preset) }) {
                                 Text("\(preset)%")
                                     .font(.system(size: 12, weight: .medium))
                             }
-                            .buttonStyle(PresetButtonStyle(isSelected: Int(brightness) == preset))
-                            .disabled(autoMode)
+                            .buttonStyle(PresetButtonStyle(isSelected: brightnessInt == preset))
                         }
                     }
                 }
-                .padding(24)
-                .background(Color.white)
-                .cornerRadius(16)
-                .shadow(color: .black.opacity(0.05), radius: 8, x: 0, y: 2)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
 
                 // 適用ボタン
                 Button(action: applyBrightness) {
-                    Text(isApplied ? "適用済み" : "輝度を適用")
+                    Text(applyButtonLabel)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(isApplied ? Color(hex: "#27ae60") : Color(hex: "#0f3460"))
+                        .padding(.vertical, 12)
+                        .background(applyButtonColor)
                         .cornerRadius(8)
                         .animation(.easeInOut(duration: 0.2), value: isApplied)
                 }
                 .buttonStyle(.plain)
+                .disabled(!usbManager.isConnected)
+
+                Spacer(minLength: 0)
             }
             .padding(24)
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            // 右設定パネル
+            // 右設定パネル (フラット)
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("設定")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-
-                    SettingsSection(title: "自動輝度") {
-                        Toggle("センサー連動", isOn: $autoMode)
-                            .font(.system(size: 12))
-                        if autoMode {
-                            Text("外部センサーに連動して自動的に輝度を調整します")
-                                .font(.system(size: 10))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
+                VStack(alignment: .leading, spacing: 24) {
                     SettingsSection(title: "スケジュール") {
                         Toggle("スケジュール有効", isOn: $scheduleEnabled)
                             .font(.system(size: 12))
+                            .toggleStyle(.switch)
+                            .controlSize(.mini)
 
                         if scheduleEnabled {
                             ForEach($schedules) { $schedule in
@@ -114,7 +96,7 @@ struct BrightnessView: View {
                             Button(action: {
                                 schedules.append(BrightnessSchedule(time: "12:00", brightness: 50))
                             }) {
-                                Text("追加")
+                                Label("追加", systemImage: "plus.circle")
                                     .font(.system(size: 11, weight: .medium))
                             }
                             .buttonStyle(SmallButtonStyle(color: Color(hex: "#0f3460")))
@@ -122,63 +104,166 @@ struct BrightnessView: View {
                     }
 
                     SettingsSection(title: "状態") {
-                        StatusRow(label: "現在の輝度", value: "\(Int(brightness))%")
-                        StatusRow(label: "動作モード", value: autoMode ? "自動" : "手動")
+                        StatusRow(label: "現在の輝度", value: "\(brightnessInt)%")
+                        StatusRow(label: "適用済み", value: isApplied ? "はい" : "いいえ")
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
             }
-            .frame(width: 200)
+            .frame(width: 240)
             .background(Color.white)
         }
     }
 
     private func applyBrightness() {
         lastApplied = brightness
-        USBManager.shared.setBrightness(Int(brightness))
+        USBManager.shared.setBrightness(brightnessInt)
+    }
+
+    private var applyButtonLabel: String {
+        if !usbManager.isConnected { return "未接続" }
+        return isApplied ? "適用済み" : "輝度を適用"
+    }
+
+    private var applyButtonColor: Color {
+        if !usbManager.isConnected { return Color(hex: "#b2bec3") }
+        return isApplied ? Color(hex: "#27ae60") : Color(hex: "#0f3460")
     }
 }
 
 // MARK: - BrightnessGaugeView
+//
+// 270°ゲージ。0%=左上(225°), 時計回りに100%=右上(135°=225+270)。
+// 下半分が繋がった「上が開いた U 字」の形状。ドラッグで値を変更可能。
 
 struct BrightnessGaugeView: View {
-    let brightness: Double
+    @Binding var brightness: Double
+
+    private static let gaugeStart: Double = 135.0   // 開始角度 (deg, 0%位置=左下)
+    private static let gaugeSweep: Double = 270.0   // ゲージの総角度
+
+    /// 輝度グラデ: 0%=暗 → 100%=明 の明度変化 (モノトーン)
+    private static let gaugeGradient = Gradient(stops: [
+        .init(color: Color(hex: "#16213e"), location: 0.0),
+        .init(color: Color(hex: "#e5eaf2"), location: 1.0),
+    ])
 
     var body: some View {
-        ZStack {
-            // 背景の円弧
-            Circle()
-                .trim(from: 0.15, to: 0.85)
-                .stroke(
-                    Color(hex: "#e8ecf0"),
-                    style: StrokeStyle(lineWidth: 16, lineCap: .round)
-                )
-                .rotationEffect(.degrees(90))
+        GeometryReader { geo in
+            ZStack {
+                // 背景の円弧
+                GaugeArc(progress: 1.0)
+                    .stroke(
+                        Color(hex: "#edf2f7"),
+                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                    )
 
-            // 値の円弧
-            Circle()
-                .trim(from: 0.15, to: 0.15 + 0.7 * (brightness / 100))
-                .stroke(
-                    LinearGradient(
-                        colors: [Color(hex: "#0f3460"), Color(hex: "#e94560")],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    style: StrokeStyle(lineWidth: 16, lineCap: .round)
-                )
-                .rotationEffect(.degrees(90))
-                .animation(.easeOut(duration: 0.2), value: brightness)
+                // 値の円弧
+                GaugeArc(progress: brightness / 100)
+                    .stroke(
+                        AngularGradient(
+                            gradient: Self.gaugeGradient,
+                            center: .center,
+                            startAngle: .degrees(Self.gaugeStart),
+                            endAngle: .degrees(Self.gaugeStart + Self.gaugeSweep)
+                        ),
+                        style: StrokeStyle(lineWidth: 18, lineCap: .round)
+                    )
+                    .animation(.easeOut(duration: 0.15), value: brightness)
 
-            // 中心テキスト
-            VStack(spacing: 0) {
-                Text("\(Int(brightness))")
-                    .font(.system(size: 48, weight: .bold, design: .rounded))
-                    .foregroundColor(Color(hex: "#2d3436"))
-                Text("%")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(.secondary)
+                // 中心テキスト
+                VStack(spacing: 0) {
+                    HStack(alignment: .lastTextBaseline, spacing: 2) {
+                        Text("\(Int(brightness.rounded()))")
+                            .font(.system(size: 56, weight: .bold, design: .rounded))
+                            .foregroundColor(Color(hex: "#2d3436"))
+                            .monospacedDigit()
+                        Text("%")
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    Text("ドラッグで調整")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.secondary.opacity(0.6))
+                        .tracking(1)
+                        .padding(.top, 2)
+                }
             }
+            .contentShape(Circle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if let newValue = Self.brightness(from: value.location, in: geo.size) {
+                            brightness = newValue
+                        }
+                    }
+            )
         }
+    }
+
+    /// マウス位置からゲージ上の輝度 (0-100) を逆算する
+    private static func brightness(from point: CGPoint, in size: CGSize) -> Double? {
+        let center = CGPoint(x: size.width / 2, y: size.height / 2)
+        let dx = point.x - center.x
+        let dy = point.y - center.y
+        // atan2: -π〜π (0=3時, +=時計回り in y-down)
+        let angleRad = atan2(dy, dx)
+        var angle = angleRad * 180 / .pi
+        if angle < 0 { angle += 360 }   // 0-360 に正規化
+
+        // gaugeStart(225°) から時計回りに 0-270° が有効範囲
+        var sweep = angle - gaugeStart
+        if sweep < 0 { sweep += 360 }
+
+        if sweep <= gaugeSweep {
+            return sweep / gaugeSweep * 100
+        }
+        // 穴の領域 (45°〜225° 反時計回り側): 中点で二分してクランプ
+        // sweep は 270〜360 の範囲
+        return sweep < (gaugeSweep + (360 - gaugeSweep) / 2) ? 100 : 0
+    }
+}
+
+// MARK: - GaugeArc
+
+/// ゲージ用の弧パス。
+/// progress=0.0 で点のみ、1.0 で全 270° の弧を描画する。
+struct GaugeArc: Shape {
+    let progress: Double
+
+    func path(in rect: CGRect) -> Path {
+        let lineWidthHalf: CGFloat = 9
+        let radius = min(rect.width, rect.height) / 2 - lineWidthHalf
+        let center = CGPoint(x: rect.midX, y: rect.midY)
+        let start = Angle.degrees(135)
+        let end = Angle.degrees(135 + 270 * max(0, min(1, progress)))
+        var path = Path()
+        path.addArc(center: center, radius: radius,
+                    startAngle: start, endAngle: end,
+                    clockwise: false)  // 画面上・時計回り
+        return path
+    }
+}
+
+// MARK: - AdjustButton
+
+struct AdjustButton: View {
+    let symbol: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(Color(hex: "#0f3460"))
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Circle()
+                        .stroke(Color(hex: "#d6dbe3"), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -188,17 +273,18 @@ struct ScheduleRow: View {
     @Binding var schedule: BrightnessSchedule
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
             TextField("HH:MM", text: $schedule.time)
                 .font(.system(size: 11, design: .monospaced))
                 .frame(width: 50)
                 .textFieldStyle(.roundedBorder)
 
-            Slider(value: $schedule.brightness, in: 0...100, step: 5)
-
-            Text("\(Int(schedule.brightness))%")
-                .font(.system(size: 11, design: .monospaced))
-                .frame(width: 30, alignment: .trailing)
+            Stepper(value: $schedule.brightness, in: 0...100, step: 5) {
+                Text("\(Int(schedule.brightness))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .frame(minWidth: 36, alignment: .trailing)
+            }
+            .controlSize(.mini)
         }
     }
 }
@@ -217,6 +303,7 @@ struct StatusRow: View {
             Spacer()
             Text(value)
                 .font(.system(size: 12, weight: .semibold))
+                .monospacedDigit()
         }
     }
 }
@@ -228,11 +315,14 @@ struct PresetButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundColor(isSelected ? .white : Color(hex: "#636e72"))
+            .foregroundColor(isSelected ? Color(hex: "#0f3460") : .secondary)
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(isSelected ? Color(hex: "#0f3460") : Color(hex: "#f0f3f7"))
-            .cornerRadius(6)
+            .background(
+                Capsule()
+                    .stroke(isSelected ? Color(hex: "#0f3460") : Color.clear, lineWidth: 1)
+            )
+            .animation(.easeInOut(duration: 0.15), value: isSelected)
     }
 }
 

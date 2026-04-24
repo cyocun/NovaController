@@ -61,3 +61,4 @@ xcodebuild -project NovaController/NovaController.xcodeproj -scheme NovaControll
 - [x] スキャン方向対応 — L→R / R→L / 上→下 / S字 (キャプチャ検証済み)
 - [ ] エラーハンドリング（接続断時のUI表示）
 - [ ] 実機テスト（macOS + MSD300接続）
+- [ ] 自動輝度（センサー連動） — UI削除済み。実装方針は `analysis/brightness_sensor_notes.md` 参照

@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - CabinetPosition
+// MARK: - CabinetPosition (プレビュー描画用)
 
 struct CabinetPosition: Hashable {
     let row: Int
@@ -10,77 +10,58 @@ struct CabinetPosition: Hashable {
 // MARK: - LayoutView
 
 struct LayoutView: View {
-    @State private var columns: Int = 4
-    @State private var rows: Int = 1
-    @State private var cabinetWidth: Int = 128
-    @State private var cabinetHeight: Int = 128
-    @State private var selectedCabinet: CabinetPosition? = nil
-    @State private var enabledCabinets: Set<CabinetPosition> = Self.allCabinets(columns: 4, rows: 1)
-    @State private var scanDirection: USBManager.ScanDirection = .leftToRight
+    @State private var selectedPreset: USBManager.LayoutPreset = .fourByOneLTR
+    @ObservedObject private var usbManager = USBManager.shared
 
-    /// 全キャビネットのSetを生成
-    private static func allCabinets(columns: Int, rows: Int) -> Set<CabinetPosition> {
-        var set = Set<CabinetPosition>()
-        for r in 0..<rows {
-            for c in 0..<columns {
-                set.insert(CabinetPosition(row: r, col: c))
-            }
-        }
-        return set
-    }
-
-    var totalResolution: (width: Int, height: Int) {
-        guard enabledCabinets.count > 0 else { return (0, 0) }
-        return (columns * cabinetWidth, rows * cabinetHeight)
-    }
+    private var columns: Int { selectedPreset.columns }
+    private var rows: Int { selectedPreset.rows }
+    private var cabinetWidth: Int { selectedPreset.cabinetWidth }
+    private var cabinetHeight: Int { selectedPreset.cabinetHeight }
+    private var scanDirection: USBManager.ScanDirection { selectedPreset.scanDirection }
+    private var totalWidth: Int { columns * cabinetWidth }
+    private var totalHeight: Int { rows * cabinetHeight }
 
     var body: some View {
         HStack(spacing: 0) {
-            // 左メインエリア
+            // 左メインエリア (プレビュー)
             VStack(alignment: .leading, spacing: 16) {
-                // ヘッダー
                 HStack {
-                    Text("キャビネット配置")
+                    Text("レイアウトプレビュー")
                         .font(.system(size: 18, weight: .bold))
                         .foregroundColor(Color(hex: "#2d3436"))
                     Spacer()
-                    Text("合計: \(enabledCabinets.count) / \(columns * rows) キャビネット")
+                    Text("\(columns) × \(rows) キャビネット")
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
 
-                // グリッドエディター
-                GridEditorView(
+                GridPreview(
                     columns: columns,
                     rows: rows,
-                    scanDirection: scanDirection,
-                    selectedCabinet: $selectedCabinet,
-                    enabledCabinets: $enabledCabinets
+                    scanDirection: scanDirection
                 )
                 .frame(height: 280)
 
-                // フッター - 出力解像度 + スキャン方向表示
                 HStack(spacing: 12) {
                     HStack(spacing: 6) {
                         Image(systemName: "aspectratio")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text("出力解像度: \(totalResolution.width) x \(totalResolution.height) px")
+                        Text("出力解像度: \(totalWidth) x \(totalHeight) px")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
                     Spacer()
                     HStack(spacing: 6) {
-                        Image(systemName: scanDirectionIcon)
+                        Image(systemName: iconForDirection(scanDirection))
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
-                        Text("方向: \(scanDirection.rawValue)")
+                        Text("方向: \(labelForDirection(scanDirection))")
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
                 }
 
-                // 適用ボタン
                 HStack(spacing: 8) {
                     Button(action: applyLayout) {
                         Text("レイアウトを適用")
@@ -88,10 +69,11 @@ struct LayoutView: View {
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(Color(hex: "#0f3460"))
+                            .background(usbManager.isConnected ? Color(hex: "#0f3460") : Color(hex: "#b2bec3"))
                             .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+                    .disabled(!usbManager.isConnected)
 
                     Button(action: resetCards) {
                         Text("リセット")
@@ -99,10 +81,11 @@ struct LayoutView: View {
                             .foregroundColor(.white)
                             .padding(.vertical, 10)
                             .padding(.horizontal, 16)
-                            .background(Color(hex: "#e94560"))
+                            .background(usbManager.isConnected ? Color(hex: "#e94560") : Color(hex: "#b2bec3"))
                             .cornerRadius(8)
                     }
                     .buttonStyle(.plain)
+                    .disabled(!usbManager.isConnected)
                 }
             }
             .padding(24)
@@ -110,150 +93,76 @@ struct LayoutView: View {
 
             // 右設定パネル
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("設定")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(.secondary)
-                        .textCase(.uppercase)
-
-                    SettingsSection(title: "グリッドサイズ") {
-                        StepperField(label: "列数", value: $columns, range: 1...16)
-                        StepperField(label: "行数", value: $rows, range: 1...16)
-                    }
-
-                    SettingsSection(title: "キャビネットサイズ (px)") {
-                        StepperField(label: "幅", value: $cabinetWidth, range: 32...512, step: 8)
-                        StepperField(label: "高さ", value: $cabinetHeight, range: 32...512, step: 8)
-                    }
-
-                    SettingsSection(title: "スキャン方向") {
-                        ForEach(USBManager.ScanDirection.allCases) { direction in
-                            Button(action: { scanDirection = direction }) {
-                                HStack {
-                                    Image(systemName: iconForDirection(direction))
+                VStack(alignment: .leading, spacing: 24) {
+                    SettingsSection(title: "プリセット") {
+                        ForEach(USBManager.LayoutPreset.allCases) { preset in
+                            Button(action: { selectedPreset = preset }) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: iconForDirection(preset.scanDirection))
                                         .font(.system(size: 11))
-                                        .frame(width: 16)
-                                    Text(direction.rawValue)
-                                        .font(.system(size: 12, weight: .medium))
+                                        .frame(width: 14)
+                                        .foregroundColor(selectedPreset == preset ? Color(hex: "#0f3460") : .secondary)
+                                    Text(preset.rawValue)
+                                        .font(.system(size: 12, weight: selectedPreset == preset ? .semibold : .regular))
+                                        .foregroundColor(selectedPreset == preset ? Color(hex: "#2d3436") : .secondary)
                                     Spacer()
-                                    if scanDirection == direction {
+                                    if selectedPreset == preset {
                                         Image(systemName: "checkmark")
                                             .font(.system(size: 10, weight: .bold))
                                             .foregroundColor(Color(hex: "#0f3460"))
                                     }
                                 }
                                 .padding(.vertical, 4)
-                                .padding(.horizontal, 8)
-                                .background(
-                                    scanDirection == direction
-                                        ? Color(hex: "#d6eaf8")
-                                        : Color.clear
-                                )
-                                .cornerRadius(4)
                             }
                             .buttonStyle(.plain)
                         }
                     }
 
-                    if let selected = selectedCabinet {
-                        SettingsSection(title: "選択中のキャビネット") {
-                            HStack {
-                                Text("位置")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text("(\(selected.col + 1), \(selected.row + 1))")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            HStack {
-                                Text("状態")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(enabledCabinets.contains(selected) ? "有効" : "無効")
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(enabledCabinets.contains(selected) ? Color(hex: "#27ae60") : .secondary)
-                            }
-                        }
-                    }
-
-                    SettingsSection(title: "クイック操作") {
-                        Button(action: enableAll) {
-                            Text("全て有効")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(SmallButtonStyle(color: Color(hex: "#0f3460")))
-
-                        Button(action: disableAll) {
-                            Text("全て無効")
-                                .font(.system(size: 12, weight: .medium))
-                        }
-                        .buttonStyle(SmallButtonStyle(color: Color(hex: "#b2bec3")))
+                    SettingsSection(title: "仕様") {
+                        StatusRow(label: "列 × 行", value: "\(columns) × \(rows)")
+                        StatusRow(label: "キャビネット", value: "\(cabinetWidth) × \(cabinetHeight) px")
+                        StatusRow(label: "出力解像度", value: "\(totalWidth) × \(totalHeight) px")
                     }
                 }
-                .padding(16)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 24)
             }
-            .frame(width: 200)
+            .frame(width: 240)
             .background(Color.white)
         }
-        .onChange(of: columns) { _ in enabledCabinets = Self.allCabinets(columns: columns, rows: rows) }
-        .onChange(of: rows) { _ in enabledCabinets = Self.allCabinets(columns: columns, rows: rows) }
-    }
-
-    private var scanDirectionIcon: String {
-        iconForDirection(scanDirection)
     }
 
     private func iconForDirection(_ direction: USBManager.ScanDirection) -> String {
         switch direction {
         case .leftToRight: return "arrow.right"
         case .rightToLeft: return "arrow.left"
-        case .topToBottom: return "arrow.down"
         case .serpentine: return "arrow.triangle.swap"
         }
     }
 
-    private func applyLayout() {
-        USBManager.shared.setLayout(
-            columns: columns,
-            rows: rows,
-            cabinetWidth: cabinetWidth,
-            cabinetHeight: cabinetHeight,
-            scanDirection: scanDirection,
-            enabled: enabledCabinets
-        )
-    }
-
-    private func resetCards() {
-        USBManager.shared.resetReceivingCards(
-            columns: columns,
-            rows: rows,
-            cabinetWidth: cabinetWidth,
-            cabinetHeight: cabinetHeight
-        )
-    }
-
-    private func enableAll() {
-        for r in 0..<rows {
-            for c in 0..<columns {
-                enabledCabinets.insert(CabinetPosition(row: r, col: c))
-            }
+    private func labelForDirection(_ direction: USBManager.ScanDirection) -> String {
+        switch direction {
+        case .leftToRight: return "左→右"
+        case .rightToLeft: return "右→左"
+        case .serpentine: return "S字"
         }
     }
 
-    private func disableAll() {
-        enabledCabinets.removeAll()
+    private func applyLayout() {
+        USBManager.shared.setLayout(preset: selectedPreset)
+    }
+
+    private func resetCards() {
+        USBManager.shared.resetReceivingCards()
     }
 }
 
-// MARK: - GridEditorView
+// MARK: - GridPreview (読み取り専用)
 
-struct GridEditorView: View {
+struct GridPreview: View {
     let columns: Int
     let rows: Int
     let scanDirection: USBManager.ScanDirection
-    @Binding var selectedCabinet: CabinetPosition?
-    @Binding var enabledCabinets: Set<CabinetPosition>
 
     var body: some View {
         GeometryReader { geometry in
@@ -268,7 +177,6 @@ struct GridEditorView: View {
             let totalHeight = cellSize * CGFloat(rows) + spacing * CGFloat(rows - 1)
 
             ZStack {
-                // 接続矢印ライン
                 ConnectionArrowsView(
                     columns: columns, rows: rows,
                     scanDirection: scanDirection,
@@ -276,30 +184,14 @@ struct GridEditorView: View {
                     totalWidth: totalWidth, totalHeight: totalHeight
                 )
 
-                // キャビネットグリッド
                 VStack(spacing: spacing) {
                     ForEach(0..<rows, id: \.self) { row in
                         HStack(spacing: spacing) {
                             ForEach(0..<columns, id: \.self) { col in
-                                let pos = CabinetPosition(row: row, col: col)
-                                let index = cabinetIndex(row: row, col: col)
-                                CabinetCell(
-                                    position: pos,
-                                    index: index,
-                                    isSelected: selectedCabinet == pos,
-                                    isEnabled: enabledCabinets.contains(pos),
+                                PreviewCell(
+                                    index: cabinetIndex(row: row, col: col),
                                     cellSize: cellSize
-                                ) {
-                                    if selectedCabinet == pos {
-                                        if enabledCabinets.contains(pos) {
-                                            enabledCabinets.remove(pos)
-                                        } else {
-                                            enabledCabinets.insert(pos)
-                                        }
-                                    } else {
-                                        selectedCabinet = pos
-                                    }
-                                }
+                                )
                             }
                         }
                     }
@@ -309,11 +201,15 @@ struct GridEditorView: View {
             .frame(width: totalWidth, height: totalHeight)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .background(Color(hex: "#e8ecf0"))
+        .background(Color.white)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color(hex: "#e8ecf0"), lineWidth: 1)
+        )
         .cornerRadius(12)
     }
 
-    /// スキャン方向に基づくキャビネットの番号を計算 (1始まり)
+    /// スキャン方向に基づくキャビネットの番号 (1始まり)
     private func cabinetIndex(row: Int, col: Int) -> Int {
         let zeroBase: Int
         switch scanDirection {
@@ -321,8 +217,6 @@ struct GridEditorView: View {
             zeroBase = row * columns + col
         case .rightToLeft:
             zeroBase = row * columns + (columns - 1 - col)
-        case .topToBottom:
-            zeroBase = col * rows + row
         case .serpentine:
             let base = col * rows
             if col % 2 == 0 {
@@ -373,19 +267,16 @@ struct ConnectionArrowsView: View {
         let length = sqrt(dx * dx + dy * dy)
         guard length > 0 else { return }
 
-        // セル端から少しマージンを取る
         let margin: CGFloat = cellSize * 0.35
         let ratio = margin / length
         let start = CGPoint(x: from.x + dx * ratio, y: from.y + dy * ratio)
         let end = CGPoint(x: to.x - dx * ratio, y: to.y - dy * ratio)
 
-        // ライン
         var linePath = Path()
         linePath.move(to: start)
         linePath.addLine(to: end)
         context.stroke(linePath, with: .color(Color(hex: "#e94560").opacity(0.5)), lineWidth: 2)
 
-        // 矢印ヘッド
         let arrowLen: CGFloat = 7
         let arrowAngle: CGFloat = .pi / 6
         let angle = atan2(dy, dx)
@@ -405,7 +296,6 @@ struct ConnectionArrowsView: View {
         context.fill(arrowPath, with: .color(Color(hex: "#e94560").opacity(0.6)))
     }
 
-    /// スキャン方向に基づく接続順序 (row, col) のリストを返す
     private func scanOrder() -> [CabinetPosition] {
         var order = [CabinetPosition]()
         switch scanDirection {
@@ -418,12 +308,6 @@ struct ConnectionArrowsView: View {
         case .rightToLeft:
             for row in 0..<rows {
                 for col in stride(from: columns - 1, through: 0, by: -1) {
-                    order.append(CabinetPosition(row: row, col: col))
-                }
-            }
-        case .topToBottom:
-            for col in 0..<columns {
-                for row in 0..<rows {
                     order.append(CabinetPosition(row: row, col: col))
                 }
             }
@@ -444,63 +328,23 @@ struct ConnectionArrowsView: View {
     }
 }
 
-// MARK: - CabinetCell
+// MARK: - PreviewCell
 
-struct CabinetCell: View {
-    let position: CabinetPosition
+struct PreviewCell: View {
     let index: Int
-    let isSelected: Bool
-    let isEnabled: Bool
     let cellSize: CGFloat
-    let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                if isSelected && isEnabled {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#0f3460"))
-                    VStack(spacing: 2) {
-                        Text("#\(index)")
-                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                            .foregroundColor(.white)
-                        if cellSize > 50 {
-                            Text("\(position.col + 1),\(position.row + 1)")
-                                .font(.system(size: 8))
-                                .foregroundColor(.white.opacity(0.7))
-                        }
-                    }
-                } else if isSelected && !isEnabled {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#dfe6e9"))
-                    RoundedRectangle(cornerRadius: 6)
-                        .strokeBorder(Color(hex: "#0f3460"), lineWidth: 2)
-                } else if !isSelected && isEnabled {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color(hex: "#d6eaf8"))
-                    VStack(spacing: 2) {
-                        Text("#\(index)")
-                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundColor(Color(hex: "#0f3460"))
-                        if cellSize > 50 {
-                            Text("\(position.col + 1),\(position.row + 1)")
-                                .font(.system(size: 8))
-                                .foregroundColor(Color(hex: "#0f3460").opacity(0.6))
-                        }
-                    }
-                } else {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(Color.white.opacity(0.6))
-                    Image(systemName: "xmark")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color(hex: "#b2bec3"))
-                }
+        ZStack {
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color(hex: "#d6eaf8"))
+            VStack(spacing: 2) {
+                Text("#\(index)")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundColor(Color(hex: "#0f3460"))
             }
-            .frame(width: cellSize, height: cellSize)
-            .animation(.easeInOut(duration: 0.15), value: isSelected)
-            .animation(.easeInOut(duration: 0.15), value: isEnabled)
         }
-        .buttonStyle(.plain)
+        .frame(width: cellSize, height: cellSize)
     }
 }
 
@@ -511,63 +355,16 @@ struct SettingsSection<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(.secondary)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary.opacity(0.8))
                 .textCase(.uppercase)
+                .tracking(0.5)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 10) {
                 content
             }
-            .padding(12)
-            .background(Color(hex: "#f5f6fa"))
-            .cornerRadius(8)
-        }
-    }
-}
-
-struct StepperField: View {
-    let label: String
-    @Binding var value: Int
-    let range: ClosedRange<Int>
-    var step: Int = 1
-
-    var body: some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 12))
-                .foregroundColor(Color(hex: "#2d3436"))
-
-            Spacer()
-
-            HStack(spacing: 0) {
-                Button(action: { if value - step >= range.lowerBound { value -= step } }) {
-                    Text("\u{2212}")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .background(Color(hex: "#dfe6e9"))
-                }
-                .buttonStyle(.plain)
-
-                Text("\(value)")
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
-                    .frame(width: 36)
-                    .multilineTextAlignment(.center)
-
-                Button(action: { if value + step <= range.upperBound { value += step } }) {
-                    Text("\u{FF0B}")
-                        .font(.system(size: 13, weight: .medium))
-                        .frame(width: 24, height: 24)
-                        .background(Color(hex: "#dfe6e9"))
-                }
-                .buttonStyle(.plain)
-            }
-            .cornerRadius(6)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(Color(hex: "#b2bec3"), lineWidth: 1)
-            )
         }
     }
 }
